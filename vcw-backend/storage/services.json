@@ -1,0 +1,282 @@
+[
+  {
+    "id": "fd8c7a5f-7b18-4420-8e92-c0c9a94efbf5",
+    "name": "Gym Floor",
+    "description": "Full access to all gym equipment including weights, cardio machines, and functional training area",
+    "category": "facility",
+    "metadata": {
+      "capacity": 1002,
+      "requirements": [
+        "Valid membership",
+        "Proper workout attire"
+      ]
+    },
+    "createdAt": "2025-10-28T16:00:52.323Z",
+    "updatedAt": "2025-10-29T04:01:05.955Z"
+  },
+  {
+    "id": "e0e196fd-f7a4-445e-b73e-dfb1e8a6197c",
+    "name": "Swimming Pool",
+    "description": "Olympic-size swimming pool with lap lanes and leisure area",
+    "category": "facility",
+    "metadata": {
+      "capacity": 50,
+      "location": "Level 2",
+      "hours": "6:00 AM - 10:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Swimming attire",
+        "Shower before entry"
+      ]
+    },
+    "createdAt": "2025-10-28T16:00:52.326Z",
+    "updatedAt": "2025-10-28T16:00:52.326Z"
+  },
+  {
+    "id": "7007ff41-5850-4feb-b79b-b0e0bda12f6b",
+    "name": "Sauna",
+    "description": "Traditional Finnish sauna for relaxation and recovery",
+    "category": "wellness",
+    "metadata": {
+      "capacity": 12,
+      "location": "Wellness Area",
+      "hours": "7:00 AM - 9:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Towel required",
+        "Maximum 20 minutes per session"
+      ]
+    },
+    "createdAt": "2025-10-28T16:00:52.326Z",
+    "updatedAt": "2025-10-28T16:00:52.326Z"
+  },
+  {
+    "id": "a4328087-7996-4546-bd48-cee3a487d978",
+    "name": "Steam Room",
+    "description": "Steam room for muscle relaxation and recovery",
+    "category": "wellness",
+    "metadata": {
+      "capacity": 8,
+      "location": "Wellness Area",
+      "hours": "7:00 AM - 9:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Towel required",
+        "Maximum 15 minutes per session"
+      ]
+    },
+    "createdAt": "2025-10-28T16:00:52.327Z",
+    "updatedAt": "2025-10-28T16:00:52.327Z"
+  },
+  {
+    "id": "7731969d-9be9-4562-8066-8545c9c2cb6a",
+    "name": "Group Fitness Classes",
+    "description": "Various group fitness classes including yoga, pilates, HIIT, and more",
+    "category": "program",
+    "metadata": {
+      "capacity": 25,
+      "location": "Group Fitness Studio",
+      "hours": "Scheduled classes throughout the day",
+      "requirements": [
+        "Valid membership",
+        "Advance booking required",
+        "Proper workout attire"
+      ]
+    },
+    "createdAt": "2025-10-28T16:00:52.327Z",
+    "updatedAt": "2025-10-28T16:00:52.327Z"
+  },
+  {
+    "id": "abb1cd1a-a0d0-4f76-b57f-52416df817ea",
+    "name": "Personal Training",
+    "description": "One-on-one personal training sessions with certified trainers",
+    "category": "program",
+    "metadata": {
+      "capacity": 1,
+      "location": "Personal Training Area",
+      "hours": "By appointment",
+      "requirements": [
+        "Valid membership",
+        "Advance booking required",
+        "Additional fee may apply"
+      ]
+    },
+    "createdAt": "2025-10-28T16:00:52.327Z",
+    "updatedAt": "2025-10-28T16:00:52.327Z"
+  },
+  {
+    "id": "1cca4099-a3ca-4da0-b2a8-6f0f0a8515ee",
+    "name": "Nutrition Consultation",
+    "description": "Professional nutrition consultation and meal planning services",
+    "category": "program",
+    "metadata": {
+      "capacity": 1,
+      "location": "Consultation Room",
+      "hours": "By appointment",
+      "requirements": [
+        "Valid membership",
+        "Advance booking required"
+      ]
+    },
+    "createdAt": "2025-10-28T16:00:52.327Z",
+    "updatedAt": "2025-10-28T16:00:52.327Z"
+  },
+  {
+    "id": "4bc9871a-3651-4897-a586-1092cae75d9c",
+    "name": "Locker Rooms",
+    "description": "Clean and secure locker facilities with showers",
+    "category": "facility",
+    "metadata": {
+      "capacity": 200,
+      "location": "Main Level",
+      "hours": "5:00 AM - 11:00 PM",
+      "requirements": [
+        "Valid membership"
+      ]
+    },
+    "createdAt": "2025-10-28T16:00:52.328Z",
+    "updatedAt": "2025-10-28T16:00:52.328Z"
+  },
+  {
+    "id": "9bc8d71a-4652-4898-b587-2093dae86d9d",
+    "name": "Basketball Court",
+    "description": "Full-size basketball court for pickup games and organized leagues",
+    "category": "facility",
+    "metadata": {
+      "capacity": 20,
+      "location": "Sports Hall",
+      "hours": "6:00 AM - 10:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Non-marking athletic shoes",
+        "Advance booking for group games"
+      ]
+    },
+    "createdAt": "2025-10-29T11:00:00.000Z",
+    "updatedAt": "2025-10-29T11:00:00.000Z"
+  },
+  {
+    "id": "0cd9e82b-5763-5909-c698-3104ebf97e0e",
+    "name": "Racquetball Courts",
+    "description": "Professional racquetball courts with equipment rental available",
+    "category": "facility",
+    "metadata": {
+      "capacity": 4,
+      "location": "Courts Level",
+      "hours": "6:00 AM - 10:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Court reservation required",
+        "Protective eyewear mandatory"
+      ]
+    },
+    "createdAt": "2025-10-29T11:05:00.000Z",
+    "updatedAt": "2025-10-29T11:05:00.000Z"
+  },
+  {
+    "id": "1de0f93c-6874-6010-d709-4215fcg08f1f",
+    "name": "Functional Training Zone",
+    "description": "Specialized area for functional fitness with TRX, kettlebells, and battle ropes",
+    "category": "facility",
+    "metadata": {
+      "capacity": 15,
+      "location": "Functional Training Area",
+      "hours": "5:00 AM - 11:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Equipment orientation required for first-time users"
+      ]
+    },
+    "createdAt": "2025-10-29T11:10:00.000Z",
+    "updatedAt": "2025-10-29T11:10:00.000Z"
+  },
+  {
+    "id": "2ef1g04d-7985-7121-e810-5326gdh19g2g",
+    "name": "Spinning Studio",
+    "description": "Dedicated spin class studio with high-energy music and professional instruction",
+    "category": "facility",
+    "metadata": {
+      "capacity": 30,
+      "location": "Cardio Level",
+      "hours": "Scheduled classes throughout the day",
+      "requirements": [
+        "Valid membership",
+        "Advance booking required",
+        "Cycling shoes recommended"
+      ]
+    },
+    "createdAt": "2025-10-29T11:15:00.000Z",
+    "updatedAt": "2025-10-29T11:15:00.000Z"
+  },
+  {
+    "id": "3fg2h15e-8096-8232-f921-6437hei20h3h",
+    "name": "Massage Therapy",
+    "description": "Professional massage therapy for muscle recovery and relaxation",
+    "category": "wellness",
+    "metadata": {
+      "capacity": 1,
+      "location": "Wellness Spa",
+      "hours": "9:00 AM - 8:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Advance booking required",
+        "Additional fee applies"
+      ]
+    },
+    "createdAt": "2025-10-29T11:20:00.000Z",
+    "updatedAt": "2025-10-29T11:20:00.000Z"
+  },
+  {
+    "id": "4gh3i26f-9107-9343-g032-7548ifj31i4i",
+    "name": "Rock Climbing Wall",
+    "description": "Indoor rock climbing wall with multiple difficulty levels and safety equipment",
+    "category": "facility",
+    "metadata": {
+      "capacity": 8,
+      "location": "Adventure Zone",
+      "hours": "10:00 AM - 9:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Safety briefing required",
+        "Age restrictions apply"
+      ]
+    },
+    "createdAt": "2025-10-29T11:25:00.000Z",
+    "updatedAt": "2025-10-29T11:25:00.000Z"
+  },
+  {
+    "id": "5hi4j37g-0218-0454-h143-8659jgk42j5j",
+    "name": "Juice Bar",
+    "description": "Fresh juice and smoothie bar with protein supplements and healthy snacks",
+    "category": "amenity",
+    "metadata": {
+      "capacity": 20,
+      "location": "Main Lobby",
+      "hours": "6:00 AM - 9:00 PM",
+      "requirements": [
+        "Valid membership for discounts",
+        "Payment required for purchases"
+      ]
+    },
+    "createdAt": "2025-10-29T11:30:00.000Z",
+    "updatedAt": "2025-10-29T11:30:00.000Z"
+  },
+  {
+    "id": "6ij5k48h-1329-1565-i254-9760khl53k6k",
+    "name": "Childcare Center",
+    "description": "Professional childcare services while parents work out",
+    "category": "amenity",
+    "metadata": {
+      "capacity": 15,
+      "location": "Family Zone",
+      "hours": "7:00 AM - 7:00 PM",
+      "requirements": [
+        "Valid membership",
+        "Child registration required",
+        "Age restrictions: 6 months - 12 years"
+      ]
+    },
+    "createdAt": "2025-10-29T11:35:00.000Z",
+    "updatedAt": "2025-10-29T11:35:00.000Z"
+  }
+]

@@ -1,0 +1,63 @@
+{
+  "name": "vcw-backend",
+  "version": "1.0.0",
+  "description": "Verifiable Credential Wallet Backend API",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/utils/issuer-keygen.js && node dist/server.js",
+    "dev": "nodemon",
+    "dev:ts": "ts-node src/utils/issuer-keygen.ts && ts-node src/server.ts",
+    "dev:watch": "nodemon --config nodemon.json",
+    "dev:build": "nodemon --config nodemon.build.json",
+    "dev:server": "nodemon --exec \"ts-node src/server.ts\" --watch src --ext ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:ts": "ts-node src/test-credentials.ts",
+    "test:watch": "nodemon --exec \"ts-node src/test-credentials.ts\" --watch src --ext ts",
+    "typecheck": "tsc --noEmit",
+    "typecheck:watch": "tsc --noEmit --watch",
+    "clean": "rimraf dist"
+  },
+  "keywords": [
+    "verifiable-credentials",
+    "jwt",
+    "crypto",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/uuid": "^10.0.0",
+    "@veramo/core": "^6.0.0",
+    "@veramo/credential-ld": "^6.0.0",
+    "@veramo/credential-w3c": "^6.0.0",
+    "@veramo/data-store": "^6.0.0",
+    "@veramo/did-jwt": "^6.0.0",
+    "@veramo/did-manager": "^6.0.0",
+    "@veramo/did-provider-key": "^6.0.0",
+    "@veramo/did-resolver": "^6.0.0",
+    "@veramo/key-manager": "^6.0.0",
+    "@veramo/kms-local": "^6.0.0",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "jose": "^6.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "sqlite3": "^5.1.7",
+    "typeorm": "^0.3.27",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.4",
+    "@types/node": "^24.9.1",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
