@@ -1,60 +1,54 @@
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import path from 'path';
-import { User, CreateUserRequest } from '../types';
+import { Repository } from 'typeorm';
+import { User } from '../entities';
+import { CreateUserRequest } from '../types';
+import { getDataSource } from '../config/database.config';
 
 export class UserService {
-  private usersFilePath: string;
+  private userRepo!: Repository<User>;
+  private isInitialized = false;
+  private initPromise: Promise<void> | null = null;
 
-  constructor() {
-    this.usersFilePath = path.join(process.cwd(), 'storage', 'users.json');
-    this.ensureStorageExists();
-  }
-
-  private ensureStorageExists(): void {
-    const storageDir = path.dirname(this.usersFilePath);
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
+  private async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      return;
     }
     
-    if (!fs.existsSync(this.usersFilePath)) {
-      fs.writeFileSync(this.usersFilePath, JSON.stringify([], null, 2));
+    if (this.initPromise) {
+      return this.initPromise;
     }
+
+    this.initPromise = (async () => {
+      const dataSource = await getDataSource();
+      this.userRepo = dataSource.getRepository(User);
+      this.isInitialized = true;
+    })();
+
+    return this.initPromise;
   }
 
-  private readUsers(): User[] {
-    try {
-      const data = fs.readFileSync(this.usersFilePath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      console.error('Error reading users:', error);
-      return [];
-    }
-  }
-
-  private writeUsers(users: User[]): void {
-    try {
-      fs.writeFileSync(this.usersFilePath, JSON.stringify(users, null, 2));
-    } catch (error) {
-      console.error('Error writing users:', error);
-      throw new Error('Failed to save users');
+  private async ensureInitialized(): Promise<void> {
+    if (!this.isInitialized) {
+      await this.initialize();
     }
   }
 
   public async createUser(request: CreateUserRequest): Promise<User> {
     try {
-      const users = this.readUsers();
+      await this.ensureInitialized();
       
       // Check if email already exists
-      const existingUser = users.find(user => user.email.toLowerCase() === request.email.toLowerCase());
+      const existingUser = await this.userRepo.findOne({
+        where: { email: request.email.toLowerCase() }
+      });
+      
       if (existingUser) {
         throw new Error('User with this email already exists');
       }
 
-      const now = new Date().toISOString();
       const userId = uuidv4();
       
-      const newUser: User = {
+      const newUser = this.userRepo.create({
         id: userId,
         name: request.name,
         email: request.email.toLowerCase(),
@@ -62,14 +56,9 @@ export class UserService {
         phone: request.phone,
         status: request.status || 'active',
         walletDid: `did:gym:user:${userId}`,
-        createdAt: now,
-        updatedAt: now
-      };
+      });
 
-      users.push(newUser);
-      this.writeUsers(users);
-
-      return newUser;
+      return await this.userRepo.save(newUser);
     } catch (error) {
       console.error('Error creating user:', error);
       throw new Error(`Failed to create user: ${(error as Error).message}`);
@@ -78,8 +67,8 @@ export class UserService {
 
   public async getUserById(userId: string): Promise<User | null> {
     try {
-      const users = this.readUsers();
-      return users.find(user => user.id === userId) || null;
+      await this.ensureInitialized();
+      return await this.userRepo.findOne({ where: { id: userId } });
     } catch (error) {
       console.error('Error getting user:', error);
       throw new Error(`Failed to get user: ${(error as Error).message}`);
@@ -88,8 +77,10 @@ export class UserService {
 
   public async getUserByEmail(email: string): Promise<User | null> {
     try {
-      const users = this.readUsers();
-      return users.find(user => user.email.toLowerCase() === email.toLowerCase()) || null;
+      await this.ensureInitialized();
+      return await this.userRepo.findOne({ 
+        where: { email: email.toLowerCase() } 
+      });
     } catch (error) {
       console.error('Error getting user by email:', error);
       throw new Error(`Failed to get user: ${(error as Error).message}`);
@@ -98,7 +89,10 @@ export class UserService {
 
   public async getAllUsers(): Promise<User[]> {
     try {
-      return this.readUsers();
+      await this.ensureInitialized();
+      return await this.userRepo.find({
+        order: { createdAt: 'DESC' }
+      });
     } catch (error) {
       console.error('Error getting all users:', error);
       throw new Error(`Failed to get users: ${(error as Error).message}`);
@@ -107,34 +101,29 @@ export class UserService {
 
   public async updateUser(userId: string, updates: Partial<Pick<User, 'name' | 'email'>>): Promise<User | null> {
     try {
-      const users = this.readUsers();
-      const userIndex = users.findIndex(user => user.id === userId);
+      await this.ensureInitialized();
       
-      if (userIndex === -1) {
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (!user) {
         return null;
       }
 
       // Check if email is being updated and if it already exists
       if (updates.email) {
-        const existingUser = users.find(user => 
-          user.email.toLowerCase() === updates.email!.toLowerCase() && user.id !== userId
-        );
-        if (existingUser) {
+        const existingUser = await this.userRepo.findOne({
+          where: { email: updates.email.toLowerCase() }
+        });
+        if (existingUser && existingUser.id !== userId) {
           throw new Error('User with this email already exists');
         }
       }
 
-      const updatedUser: User = {
-        ...users[userIndex],
-        ...updates,
-        email: updates.email ? updates.email.toLowerCase() : users[userIndex].email,
-        updatedAt: new Date().toISOString()
-      };
+      Object.assign(user, updates);
+      if (updates.email) {
+        user.email = updates.email.toLowerCase();
+      }
 
-      users[userIndex] = updatedUser;
-      this.writeUsers(users);
-
-      return updatedUser;
+      return await this.userRepo.save(user);
     } catch (error) {
       console.error('Error updating user:', error);
       throw new Error(`Failed to update user: ${(error as Error).message}`);
@@ -143,17 +132,10 @@ export class UserService {
 
   public async deleteUser(userId: string): Promise<boolean> {
     try {
-      const users = this.readUsers();
-      const userIndex = users.findIndex(user => user.id === userId);
+      await this.ensureInitialized();
       
-      if (userIndex === -1) {
-        return false;
-      }
-
-      users.splice(userIndex, 1);
-      this.writeUsers(users);
-
-      return true;
+      const result = await this.userRepo.delete(userId);
+      return !!(result.affected && result.affected > 0);
     } catch (error) {
       console.error('Error deleting user:', error);
       throw new Error(`Failed to delete user: ${(error as Error).message}`);
@@ -162,13 +144,16 @@ export class UserService {
 
   public async searchUsers(query: string): Promise<User[]> {
     try {
-      const users = this.readUsers();
+      await this.ensureInitialized();
+      
       const lowercaseQuery = query.toLowerCase();
       
-      return users.filter(user => 
-        user.name.toLowerCase().includes(lowercaseQuery) ||
-        user.email.toLowerCase().includes(lowercaseQuery)
-      );
+      return await this.userRepo
+        .createQueryBuilder('user')
+        .where('LOWER(user.name) LIKE :query OR LOWER(user.email) LIKE :query', {
+          query: `%${lowercaseQuery}%`
+        })
+        .getMany();
     } catch (error) {
       console.error('Error searching users:', error);
       throw new Error(`Failed to search users: ${(error as Error).message}`);
@@ -181,16 +166,25 @@ export class UserService {
     createdThisMonth: number;
   }> {
     try {
-      const users = this.readUsers();
+      await this.ensureInitialized();
+      
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      return {
-        total: users.length,
-        createdToday: users.filter(user => new Date(user.createdAt) >= today).length,
-        createdThisMonth: users.filter(user => new Date(user.createdAt) >= thisMonth).length
-      };
+      const total = await this.userRepo.count();
+      
+      const createdToday = await this.userRepo
+        .createQueryBuilder('user')
+        .where('user.createdAt >= :today', { today })
+        .getCount();
+        
+      const createdThisMonth = await this.userRepo
+        .createQueryBuilder('user')
+        .where('user.createdAt >= :thisMonth', { thisMonth })
+        .getCount();
+
+      return { total, createdToday, createdThisMonth };
     } catch (error) {
       console.error('Error getting user stats:', error);
       throw new Error(`Failed to get user stats: ${(error as Error).message}`);

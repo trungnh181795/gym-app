@@ -180,7 +180,7 @@ export class CredentialsService {
         updatedAt: now.toISOString()
       };
       
-      const finalStoredCredential = storageService.createCredential(credentialId, {
+      const finalStoredCredential = await storageService.createCredential(credentialId, {
         id: credentialId,
         credential: credential,
         jwt: jwt,
@@ -240,7 +240,7 @@ export class CredentialsService {
         status
       } = options;
 
-      const allCredentials = storageService.readAllCredentials();
+      const allCredentials = await storageService.readAllCredentials();
       
       // Filter credentials
       let filteredCredentials = allCredentials.filter((cred: StoredCredential) => {
@@ -406,9 +406,9 @@ export class CredentialsService {
     }
   }
 
-  public async getStorageStats(): Promise<StorageStats> {
+  public async getStorageStats(): Promise<any> {
     try {
-      const allCredentials = storageService.readAllCredentials();
+      const allCredentials = await storageService.readAllCredentials();
       
       const active = allCredentials.filter((c: StoredCredential) => c.status === 'active').length;
       const revoked = allCredentials.filter((c: StoredCredential) => c.status === 'revoked').length;

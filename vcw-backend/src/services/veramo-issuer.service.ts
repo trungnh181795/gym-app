@@ -1,4 +1,4 @@
-import { agent, getOrCreateIssuerDID } from '../config/veramo.config';
+import { getAgent, getOrCreateIssuerDID } from '../config/veramo.config';
 import { GYM_CONFIG } from '../config';
 
 /**
@@ -63,6 +63,7 @@ export class VeramoIssuerService {
      * @returns DID Document resolved by Veramo
      */
     public async getDIDDocument(): Promise<any> {
+        const agent = await getAgent();
         const did = this.getIssuerDid();
         const didDocument = await agent.resolveDid({ didUrl: did });
         return didDocument.didDocument;
@@ -102,6 +103,7 @@ export class VeramoIssuerService {
      * @returns Array of all DIDs managed by this agent
      */
     public async listDIDs(): Promise<any[]> {
+        const agent = await getAgent();
         return await agent.didManagerFind();
     }
 
@@ -111,6 +113,7 @@ export class VeramoIssuerService {
      * @returns New identifier
      */
     public async createDID(alias?: string): Promise<any> {
+        const agent = await getAgent();
         return await agent.didManagerCreate({
             alias,
             provider: 'did:key',

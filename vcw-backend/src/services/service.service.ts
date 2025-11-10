@@ -1,65 +1,58 @@
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import path from 'path';
+import { Repository } from 'typeorm';
+import { getDataSource } from '../config/database.config';
+import { Service as ServiceEntity } from '../entities';
 import { Service, CreateServiceRequest } from '../types';
 
 export class ServiceManager {
-  private servicesFilePath: string;
+  private serviceRepository: Repository<ServiceEntity> | null = null;
+  private initPromise: Promise<void> | null = null;
 
-  constructor() {
-    this.servicesFilePath = path.join(process.cwd(), 'storage', 'services.json');
-    this.ensureStorageExists();
-  }
+  private async ensureInitialized(): Promise<void> {
+    if (this.serviceRepository) {
+      return;
+    }
 
-  private ensureStorageExists(): void {
-    const storageDir = path.dirname(this.servicesFilePath);
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
+    if (this.initPromise) {
+      return this.initPromise;
     }
-    
-    if (!fs.existsSync(this.servicesFilePath)) {
-      fs.writeFileSync(this.servicesFilePath, JSON.stringify([], null, 2));
-    }
-  }
 
-  private readServices(): Service[] {
-    try {
-      const data = fs.readFileSync(this.servicesFilePath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      console.error('Error reading services:', error);
-      return [];
-    }
-  }
+    this.initPromise = (async () => {
+      try {
+        const dataSource = await getDataSource();
+        this.serviceRepository = dataSource.getRepository(ServiceEntity);
+      } catch (error) {
+        this.initPromise = null;
+        throw error;
+      }
+    })();
 
-  private writeServices(services: Service[]): void {
-    try {
-      fs.writeFileSync(this.servicesFilePath, JSON.stringify(services, null, 2));
-    } catch (error) {
-      console.error('Error writing services:', error);
-      throw new Error('Failed to save services');
-    }
+    return this.initPromise;
   }
 
   public async createService(request: CreateServiceRequest): Promise<Service> {
     try {
-      const services = this.readServices();
-      const now = new Date().toISOString();
+      await this.ensureInitialized();
       
-      const newService: Service = {
+      const newService = this.serviceRepository!.create({
         id: uuidv4(),
         name: request.name,
         description: request.description,
         category: request.category,
-        metadata: request.metadata || {},
-        createdAt: now,
-        updatedAt: now
+        metadata: request.metadata ? JSON.stringify(request.metadata) : undefined,
+      });
+
+      const saved = await this.serviceRepository!.save(newService);
+      
+      return {
+        id: saved.id,
+        name: saved.name,
+        description: saved.description,
+        category: saved.category as Service['category'],
+        metadata: saved.metadata ? JSON.parse(saved.metadata) : {},
+        createdAt: saved.createdAt.toISOString(),
+        updatedAt: saved.updatedAt.toISOString()
       };
-
-      services.push(newService);
-      this.writeServices(services);
-
-      return newService;
     } catch (error) {
       console.error('Error creating service:', error);
       throw new Error(`Failed to create service: ${(error as Error).message}`);
@@ -68,8 +61,23 @@ export class ServiceManager {
 
   public async getServiceById(serviceId: string): Promise<Service | null> {
     try {
-      const services = this.readServices();
-      return services.find(service => service.id === serviceId) || null;
+      await this.ensureInitialized();
+      
+      const service = await this.serviceRepository!.findOne({ where: { id: serviceId } });
+      
+      if (!service) {
+        return null;
+      }
+      
+      return {
+        id: service.id,
+        name: service.name,
+        description: service.description,
+        category: service.category as Service['category'],
+        metadata: service.metadata ? JSON.parse(service.metadata) : {},
+        createdAt: service.createdAt.toISOString(),
+        updatedAt: service.updatedAt.toISOString()
+      };
     } catch (error) {
       console.error('Error getting service:', error);
       throw new Error(`Failed to get service: ${(error as Error).message}`);
@@ -78,7 +86,19 @@ export class ServiceManager {
 
   public async getAllServices(): Promise<Service[]> {
     try {
-      return this.readServices();
+      await this.ensureInitialized();
+      
+      const services = await this.serviceRepository!.find();
+      
+      return services.map(service => ({
+        id: service.id,
+        name: service.name,
+        description: service.description,
+        category: service.category as Service['category'],
+        metadata: service.metadata ? JSON.parse(service.metadata) : {},
+        createdAt: service.createdAt.toISOString(),
+        updatedAt: service.updatedAt.toISOString()
+      }));
     } catch (error) {
       console.error('Error getting all services:', error);
       throw new Error(`Failed to get services: ${(error as Error).message}`);
@@ -87,8 +107,19 @@ export class ServiceManager {
 
   public async getServicesByCategory(category: Service['category']): Promise<Service[]> {
     try {
-      const services = this.readServices();
-      return services.filter(service => service.category === category);
+      await this.ensureInitialized();
+      
+      const services = await this.serviceRepository!.find({ where: { category } });
+      
+      return services.map(service => ({
+        id: service.id,
+        name: service.name,
+        description: service.description,
+        category: service.category as Service['category'],
+        metadata: service.metadata ? JSON.parse(service.metadata) : {},
+        createdAt: service.createdAt.toISOString(),
+        updatedAt: service.updatedAt.toISOString()
+      }));
     } catch (error) {
       console.error('Error getting services by category:', error);
       throw new Error(`Failed to get services by category: ${(error as Error).message}`);
@@ -100,23 +131,32 @@ export class ServiceManager {
     updates: Partial<Pick<Service, 'name' | 'description' | 'category' | 'metadata'>>
   ): Promise<Service | null> {
     try {
-      const services = this.readServices();
-      const serviceIndex = services.findIndex(service => service.id === serviceId);
+      await this.ensureInitialized();
       
-      if (serviceIndex === -1) {
+      const service = await this.serviceRepository!.findOne({ where: { id: serviceId } });
+      
+      if (!service) {
         return null;
       }
 
-      const updatedService: Service = {
-        ...services[serviceIndex],
-        ...updates,
-        updatedAt: new Date().toISOString()
+      if (updates.name !== undefined) service.name = updates.name;
+      if (updates.description !== undefined) service.description = updates.description;
+      if (updates.category !== undefined) service.category = updates.category;
+      if (updates.metadata !== undefined) {
+        service.metadata = JSON.stringify(updates.metadata);
+      }
+
+      const saved = await this.serviceRepository!.save(service);
+
+      return {
+        id: saved.id,
+        name: saved.name,
+        description: saved.description,
+        category: saved.category as Service['category'],
+        metadata: saved.metadata ? JSON.parse(saved.metadata) : {},
+        createdAt: saved.createdAt.toISOString(),
+        updatedAt: saved.updatedAt.toISOString()
       };
-
-      services[serviceIndex] = updatedService;
-      this.writeServices(services);
-
-      return updatedService;
     } catch (error) {
       console.error('Error updating service:', error);
       throw new Error(`Failed to update service: ${(error as Error).message}`);
@@ -125,17 +165,11 @@ export class ServiceManager {
 
   public async deleteService(serviceId: string): Promise<boolean> {
     try {
-      const services = this.readServices();
-      const serviceIndex = services.findIndex(service => service.id === serviceId);
+      await this.ensureInitialized();
       
-      if (serviceIndex === -1) {
-        return false;
-      }
-
-      services.splice(serviceIndex, 1);
-      this.writeServices(services);
-
-      return true;
+      const result = await this.serviceRepository!.delete(serviceId);
+      
+      return (result.affected ?? 0) > 0;
     } catch (error) {
       console.error('Error deleting service:', error);
       throw new Error(`Failed to delete service: ${(error as Error).message}`);
@@ -144,20 +178,29 @@ export class ServiceManager {
 
   public async getServicesByIds(serviceIds: string[]): Promise<Service[]> {
     try {
-      // Handle undefined or empty serviceIds
+      await this.ensureInitialized();
+      
       if (!serviceIds || !Array.isArray(serviceIds) || serviceIds.length === 0) {
         return [];
       }
       
-      const services = this.readServices();
-      return services.filter(service => serviceIds.includes(service.id));
+      const services = await this.serviceRepository!.findByIds(serviceIds);
+      
+      return services.map(service => ({
+        id: service.id,
+        name: service.name,
+        description: service.description,
+        category: service.category as Service['category'],
+        metadata: service.metadata ? JSON.parse(service.metadata) : {},
+        createdAt: service.createdAt.toISOString(),
+        updatedAt: service.updatedAt.toISOString()
+      }));
     } catch (error) {
       console.error('Error getting services by IDs:', error);
       throw new Error(`Failed to get services by IDs: ${(error as Error).message}`);
     }
   }
 
-  // Predefined gym services
   public static async initializeDefaultServices(): Promise<void> {
     const serviceManager = new ServiceManager();
     const existingServices = await serviceManager.getAllServices();

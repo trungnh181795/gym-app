@@ -1,12 +1,12 @@
-import fs from 'fs';
-import path from 'path';
+import { Repository, Like } from 'typeorm';
+import { getDataSource } from '../config/database.config';
+import { StoredCredential as StoredCredentialEntity } from '../entities';
 import { StoredCredential, PaginationInfo } from '../types';
 
 interface StorageStats {
   totalCredentials: number;
   storageLocation: string;
   lastModified: string | null;
-  fileSizeBytes?: number;
 }
 
 interface PaginatedResult {
@@ -15,116 +15,121 @@ interface PaginatedResult {
 }
 
 export class StorageService {
-  private storageDir: string;
-  private credentialsFile: string;
-  private credentials: Map<string, StoredCredential>;
+  private credentialRepository: Repository<StoredCredentialEntity> | null = null;
+  private initPromise: Promise<void> | null = null;
 
-  constructor() {
-    this.storageDir = './storage';
-    this.credentialsFile = path.join(this.storageDir, 'credentials.json');
-    this.credentials = new Map<string, StoredCredential>();
-    this.init();
-  }
+  private async ensureInitialized(): Promise<void> {
+    if (this.credentialRepository) {
+      return;
+    }
 
-  private init(): void {
-    try {
-      if (!fs.existsSync(this.storageDir)) {
-        fs.mkdirSync(this.storageDir, { recursive: true });
-        console.log('Storage directory created');
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    this.initPromise = (async () => {
+      try {
+        const dataSource = await getDataSource();
+        this.credentialRepository = dataSource.getRepository(StoredCredentialEntity);
+        const count = await this.credentialRepository.count();
+        console.log(`Storage service initialized with ${count} credentials`);
+      } catch (error) {
+        this.initPromise = null;
+        throw error;
       }
+    })();
 
-      this.loadCredentials();
-      console.log(`Storage service initialized with ${this.credentials.size} credentials`);
-    } catch (error) {
-      console.error('Error initializing storage service:', error);
-      throw error;
-    }
+    return this.initPromise;
   }
 
-  private loadCredentials(): void {
-    try {
-      if (fs.existsSync(this.credentialsFile)) {
-        const data = fs.readFileSync(this.credentialsFile, 'utf8');
-        const credentialsArray: [string, StoredCredential][] = JSON.parse(data);
-        
-        this.credentials = new Map(credentialsArray);
-        console.log(`Loaded ${this.credentials.size} credentials from file`);
-      } else {
-        this.saveCredentials();
-        console.log('Created new credentials file');
-      }
-    } catch (error) {
-      console.error('Error loading credentials:', error);
-      this.credentials = new Map();
-      this.saveCredentials();
-    }
+  private entityToType(entity: StoredCredentialEntity): StoredCredential {
+    return {
+      id: entity.id,
+      credential: JSON.parse(entity.credential),
+      jwt: entity.jwt,
+      holderDid: entity.holderDid,
+      benefitId: entity.benefitId || '',
+      membershipId: entity.membershipId || '',
+      status: entity.status,
+      expireDate: entity.expireDate?.toISOString() || '',
+      metadata: entity.metadata ? JSON.parse(entity.metadata) : undefined,
+      createdAt: entity.createdAt.toISOString(),
+      updatedAt: entity.updatedAt.toISOString()
+    };
   }
 
-  private saveCredentials(): void {
+  public async createCredential(id: string, credential: Omit<StoredCredential, 'createdAt' | 'updatedAt'>): Promise<StoredCredential> {
     try {
-      const credentialsArray = Array.from(this.credentials.entries());
-      fs.writeFileSync(this.credentialsFile, JSON.stringify(credentialsArray, null, 2));
-    } catch (error) {
-      console.error('Error saving credentials:', error);
-      throw error;
-    }
-  }
-
-  public createCredential(id: string, credential: Omit<StoredCredential, 'createdAt' | 'updatedAt'>): StoredCredential {
-    try {
-      if (this.credentials.has(id)) {
+      await this.ensureInitialized();
+      
+      const existing = await this.credentialRepository!.findOne({ where: { id } });
+      if (existing) {
         throw new Error(`Credential with ID ${id} already exists`);
       }
 
-      // Add timestamp
-      const credentialWithMetadata: StoredCredential = {
-        ...credential,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      const newCredential = this.credentialRepository!.create({
+        id,
+        credential: JSON.stringify(credential.credential),
+        jwt: credential.jwt,
+        holderDid: credential.holderDid,
+        benefitId: credential.benefitId || undefined,
+        membershipId: credential.membershipId || undefined,
+        status: credential.status,
+        expireDate: credential.expireDate ? new Date(credential.expireDate) : undefined,
+        metadata: credential.metadata ? JSON.stringify(credential.metadata) : undefined,
+      });
 
-      this.credentials.set(id, credentialWithMetadata);
-      this.saveCredentials();
-      
+      const saved = await this.credentialRepository!.save(newCredential);
       console.log(`Credential ${id} created successfully`);
-      return credentialWithMetadata;
+      return this.entityToType(saved);
     } catch (error) {
       console.error('Error creating credential:', error);
       throw error;
     }
   }
 
-  public readCredential(id: string): StoredCredential | null {
+  public async readCredential(id: string): Promise<StoredCredential | null> {
     try {
-      return this.credentials.get(id) || null;
+      await this.ensureInitialized();
+      
+      const credential = await this.credentialRepository!.findOne({ where: { id } });
+      return credential ? this.entityToType(credential) : null;
     } catch (error) {
       console.error('Error reading credential:', error);
       throw error;
     }
   }
 
-  public readAllCredentials(): StoredCredential[] {
+  public async readAllCredentials(): Promise<StoredCredential[]> {
     try {
-      return Array.from(this.credentials.values());
+      await this.ensureInitialized();
+      
+      const credentials = await this.credentialRepository!.find();
+      return credentials.map(c => this.entityToType(c));
     } catch (error) {
       console.error('Error reading all credentials:', error);
       throw error;
     }
   }
 
-  public readCredentialsPaginated(page: number = 1, limit: number = 10): PaginatedResult {
+  public async readCredentialsPaginated(page: number = 1, limit: number = 10): Promise<PaginatedResult> {
     try {
-      const allCredentials = this.readAllCredentials();
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
+      await this.ensureInitialized();
+      
+      const skip = (page - 1) * limit;
+      const [credentials, total] = await this.credentialRepository!.findAndCount({
+        skip,
+        take: limit,
+        order: { createdAt: 'DESC' }
+      });
       
       return {
-        credentials: allCredentials.slice(startIndex, endIndex),
+        credentials: credentials.map(c => this.entityToType(c)),
         pagination: {
           page,
           limit,
-          total: allCredentials.length,
-          totalPages: Math.ceil(allCredentials.length / limit)
+          total,
+          totalPages: Math.ceil(total / limit)
         }
       };
     } catch (error) {
@@ -133,22 +138,31 @@ export class StorageService {
     }
   }
 
-  public updateCredential(id: string, updatedCredential: Partial<StoredCredential>): boolean {
+  public async updateCredential(id: string, updatedCredential: Partial<StoredCredential>): Promise<boolean> {
     try {
-      if (!this.credentials.has(id)) {
-        return false; // Credential doesn't exist
+      await this.ensureInitialized();
+      
+      const credential = await this.credentialRepository!.findOne({ where: { id } });
+      if (!credential) {
+        return false;
       }
 
-      const existingCredential = this.credentials.get(id)!;
-      const mergedCredential: StoredCredential = {
-        ...existingCredential,
-        ...updatedCredential,
-        updatedAt: new Date().toISOString()
-      };
+      if (updatedCredential.credential !== undefined) {
+        credential.credential = JSON.stringify(updatedCredential.credential);
+      }
+      if (updatedCredential.jwt !== undefined) credential.jwt = updatedCredential.jwt;
+      if (updatedCredential.holderDid !== undefined) credential.holderDid = updatedCredential.holderDid;
+      if (updatedCredential.benefitId !== undefined) credential.benefitId = updatedCredential.benefitId || undefined;
+      if (updatedCredential.membershipId !== undefined) credential.membershipId = updatedCredential.membershipId || undefined;
+      if (updatedCredential.status !== undefined) credential.status = updatedCredential.status;
+      if (updatedCredential.expireDate !== undefined) {
+        credential.expireDate = updatedCredential.expireDate ? new Date(updatedCredential.expireDate) : undefined;
+      }
+      if (updatedCredential.metadata !== undefined) {
+        credential.metadata = updatedCredential.metadata ? JSON.stringify(updatedCredential.metadata) : undefined;
+      }
 
-      this.credentials.set(id, mergedCredential);
-      this.saveCredentials();
-      
+      await this.credentialRepository!.save(credential);
       console.log(`Credential ${id} updated successfully`);
       return true;
     } catch (error) {
@@ -157,69 +171,84 @@ export class StorageService {
     }
   }
 
-  public deleteCredential(id: string): boolean {
+  public async deleteCredential(id: string): Promise<boolean> {
     try {
-      if (!this.credentials.has(id)) {
-        return false; // Credential doesn't exist
-      }
-
-      this.credentials.delete(id);
-      this.saveCredentials();
+      await this.ensureInitialized();
       
-      console.log(`Credential ${id} deleted successfully`);
-      return true;
+      const result = await this.credentialRepository!.delete(id);
+      const deleted = (result.affected ?? 0) > 0;
+      
+      if (deleted) {
+        console.log(`Credential ${id} deleted successfully`);
+      }
+      return deleted;
     } catch (error) {
       console.error('Error deleting credential:', error);
       throw error;
     }
   }
 
-  public credentialExists(id: string): boolean {
-    return this.credentials.has(id);
-  }
-
-  public getCredentialCount(): number {
-    return this.credentials.size;
-  }
-
-  public searchCredentials(searchTerm: string): StoredCredential[] {
+  public async credentialExists(id: string): Promise<boolean> {
     try {
-      const allCredentials = this.readAllCredentials();
+      await this.ensureInitialized();
+      
+      const count = await this.credentialRepository!.count({ where: { id } });
+      return count > 0;
+    } catch (error) {
+      console.error('Error checking credential existence:', error);
+      throw error;
+    }
+  }
+
+  public async getCredentialCount(): Promise<number> {
+    try {
+      await this.ensureInitialized();
+      
+      return await this.credentialRepository!.count();
+    } catch (error) {
+      console.error('Error getting credential count:', error);
+      throw error;
+    }
+  }
+
+  public async searchCredentials(searchTerm: string): Promise<StoredCredential[]> {
+    try {
+      await this.ensureInitialized();
+      
+      const credentials = await this.credentialRepository!.find();
       const searchLower = searchTerm.toLowerCase();
       
-      return allCredentials.filter(credential => {
-        // Search in credential subject properties
-        const subjectStr = JSON.stringify(credential.credential?.credentialSubject || {}).toLowerCase();
-        const typeStr = JSON.stringify(credential.credential?.type || []).toLowerCase();
-        const issuerStr = (credential.credential?.issuer || '').toLowerCase();
-        const metadataStr = JSON.stringify(credential.metadata || {}).toLowerCase();
-        
-        return subjectStr.includes(searchLower) || 
-               typeStr.includes(searchLower) || 
-               issuerStr.includes(searchLower) ||
-               metadataStr.includes(searchLower);
-      });
+      return credentials
+        .filter(credential => {
+          const credentialStr = credential.credential.toLowerCase();
+          const holderDidStr = credential.holderDid.toLowerCase();
+          const metadataStr = (credential.metadata || '').toLowerCase();
+          
+          return credentialStr.includes(searchLower) || 
+                 holderDidStr.includes(searchLower) ||
+                 metadataStr.includes(searchLower);
+        })
+        .map(c => this.entityToType(c));
     } catch (error) {
       console.error('Error searching credentials:', error);
       throw error;
     }
   }
 
-  public getStorageStats(): StorageStats {
+  public async getStorageStats(): Promise<StorageStats> {
     try {
-      const stats: StorageStats = {
-        totalCredentials: this.getCredentialCount(),
-        storageLocation: this.credentialsFile,
-        lastModified: null
+      await this.ensureInitialized();
+      
+      const count = await this.credentialRepository!.count();
+      const latest = await this.credentialRepository!.findOne({
+        order: { updatedAt: 'DESC' }
+      });
+
+      return {
+        totalCredentials: count,
+        storageLocation: 'SQLite Database',
+        lastModified: latest?.updatedAt.toISOString() || null
       };
-
-      if (fs.existsSync(this.credentialsFile)) {
-        const fileStats = fs.statSync(this.credentialsFile);
-        stats.lastModified = fileStats.mtime.toISOString();
-        stats.fileSizeBytes = fileStats.size;
-      }
-
-      return stats;
     } catch (error) {
       console.error('Error getting storage stats:', error);
       throw error;

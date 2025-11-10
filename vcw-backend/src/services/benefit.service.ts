@@ -1,78 +1,79 @@
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import path from 'path';
+import { Repository } from 'typeorm';
+import { getDataSource } from '../config/database.config';
+import { Benefit as BenefitEntity } from '../entities';
 import { Benefit, CreateBenefitRequest } from '../types';
 import { serviceManager } from './service.service';
 
 export class BenefitManager {
-  private benefitsFilePath: string;
+  private benefitRepository: Repository<BenefitEntity> | null = null;
+  private initPromise: Promise<void> | null = null;
 
-  constructor() {
-    this.benefitsFilePath = path.join(process.cwd(), 'storage', 'benefits.json');
-    this.ensureStorageExists();
+  private async ensureInitialized(): Promise<void> {
+    if (this.benefitRepository) {
+      return;
+    }
+
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    this.initPromise = (async () => {
+      try {
+        const dataSource = await getDataSource();
+        this.benefitRepository = dataSource.getRepository(BenefitEntity);
+      } catch (error) {
+        this.initPromise = null;
+        throw error;
+      }
+    })();
+
+    return this.initPromise;
   }
 
-  private ensureStorageExists(): void {
-    const storageDir = path.dirname(this.benefitsFilePath);
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
-    
-    if (!fs.existsSync(this.benefitsFilePath)) {
-      fs.writeFileSync(this.benefitsFilePath, JSON.stringify([], null, 2));
-    }
-  }
-
-  private readBenefits(): Benefit[] {
-    try {
-      const data = fs.readFileSync(this.benefitsFilePath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      console.error('Error reading benefits:', error);
-      return [];
-    }
-  }
-
-  private writeBenefits(benefits: Benefit[]): void {
-    try {
-      fs.writeFileSync(this.benefitsFilePath, JSON.stringify(benefits, null, 2));
-    } catch (error) {
-      console.error('Error writing benefits:', error);
-      throw new Error('Failed to save benefits');
-    }
+  private entityToType(entity: BenefitEntity): Benefit {
+    return {
+      id: entity.id,
+      name: entity.name,
+      description: entity.description,
+      price: entity.price,
+      serviceIds: entity.serviceIds ? JSON.parse(entity.serviceIds) : [],
+      startDate: entity.startDate.toISOString(),
+      endDate: entity.endDate.toISOString(),
+      maxUsesPerMonth: entity.maxUsesPerMonth,
+      requiresBooking: entity.requiresBooking,
+      isShareable: entity.isShareable,
+      sharedWithUserId: entity.sharedWithUserId,
+      createdAt: entity.createdAt.toISOString(),
+      updatedAt: entity.updatedAt.toISOString()
+    };
   }
 
   public async createBenefit(request: CreateBenefitRequest): Promise<Benefit> {
     try {
-      // Validate that all service IDs exist
       const services = await serviceManager.getServicesByIds(request.serviceIds);
       if (services.length !== request.serviceIds.length) {
         throw new Error('Some service IDs are invalid');
       }
 
-      const benefits = this.readBenefits();
-      const now = new Date().toISOString();
+      await this.ensureInitialized();
       
-      const newBenefit: Benefit = {
+      const newBenefit = this.benefitRepository!.create({
         id: uuidv4(),
         name: request.name,
         description: request.description,
         price: request.price,
-        serviceIds: request.serviceIds,
-        startDate: request.startDate,
-        endDate: request.endDate,
+        serviceIds: JSON.stringify(request.serviceIds),
+        startDate: new Date(request.startDate),
+        endDate: new Date(request.endDate),
         maxUsesPerMonth: request.maxUsesPerMonth,
         requiresBooking: request.requiresBooking || false,
         isShareable: request.isShareable || false,
         sharedWithUserId: request.sharedWithUserId,
-        createdAt: now,
-        updatedAt: now
-      };
+      });
 
-      benefits.push(newBenefit);
-      this.writeBenefits(benefits);
-
-      return newBenefit;
+      const saved = await this.benefitRepository!.save(newBenefit);
+      return this.entityToType(saved);
     } catch (error) {
       console.error('Error creating benefit:', error);
       throw new Error(`Failed to create benefit: ${(error as Error).message}`);
@@ -81,8 +82,15 @@ export class BenefitManager {
 
   public async getBenefitById(benefitId: string): Promise<Benefit | null> {
     try {
-      const benefits = this.readBenefits();
-      return benefits.find(benefit => benefit.id === benefitId) || null;
+      await this.ensureInitialized();
+      
+      const benefit = await this.benefitRepository!.findOne({ where: { id: benefitId } });
+      
+      if (!benefit) {
+        return null;
+      }
+      
+      return this.entityToType(benefit);
     } catch (error) {
       console.error('Error getting benefit:', error);
       throw new Error(`Failed to get benefit: ${(error as Error).message}`);
@@ -91,7 +99,10 @@ export class BenefitManager {
 
   public async getAllBenefits(): Promise<Benefit[]> {
     try {
-      return this.readBenefits();
+      await this.ensureInitialized();
+      
+      const benefits = await this.benefitRepository!.find();
+      return benefits.map(b => this.entityToType(b));
     } catch (error) {
       console.error('Error getting all benefits:', error);
       throw new Error(`Failed to get benefits: ${(error as Error).message}`);
@@ -100,8 +111,10 @@ export class BenefitManager {
 
   public async getBenefitsByIds(benefitIds: string[]): Promise<Benefit[]> {
     try {
-      const benefits = this.readBenefits();
-      return benefits.filter(benefit => benefitIds.includes(benefit.id));
+      await this.ensureInitialized();
+      
+      const benefits = await this.benefitRepository!.findByIds(benefitIds);
+      return benefits.map(b => this.entityToType(b));
     } catch (error) {
       console.error('Error getting benefits by IDs:', error);
       throw new Error(`Failed to get benefits by IDs: ${(error as Error).message}`);
@@ -113,14 +126,6 @@ export class BenefitManager {
     updates: Partial<Pick<Benefit, 'name' | 'description' | 'price' | 'serviceIds' | 'startDate' | 'endDate' | 'maxUsesPerMonth' | 'requiresBooking' | 'isShareable' | 'sharedWithUserId'>>
   ): Promise<Benefit | null> {
     try {
-      const benefits = this.readBenefits();
-      const benefitIndex = benefits.findIndex(benefit => benefit.id === benefitId);
-      
-      if (benefitIndex === -1) {
-        return null;
-      }
-
-      // Validate service IDs if provided
       if (updates.serviceIds) {
         const services = await serviceManager.getServicesByIds(updates.serviceIds);
         if (services.length !== updates.serviceIds.length) {
@@ -128,16 +133,27 @@ export class BenefitManager {
         }
       }
 
-      const updatedBenefit: Benefit = {
-        ...benefits[benefitIndex],
-        ...updates,
-        updatedAt: new Date().toISOString()
-      };
+      await this.ensureInitialized();
+      
+      const benefit = await this.benefitRepository!.findOne({ where: { id: benefitId } });
+      
+      if (!benefit) {
+        return null;
+      }
 
-      benefits[benefitIndex] = updatedBenefit;
-      this.writeBenefits(benefits);
+      if (updates.name !== undefined) benefit.name = updates.name;
+      if (updates.description !== undefined) benefit.description = updates.description;
+      if (updates.price !== undefined) benefit.price = updates.price;
+      if (updates.serviceIds !== undefined) benefit.serviceIds = JSON.stringify(updates.serviceIds);
+      if (updates.startDate !== undefined) benefit.startDate = new Date(updates.startDate);
+      if (updates.endDate !== undefined) benefit.endDate = new Date(updates.endDate);
+      if (updates.maxUsesPerMonth !== undefined) benefit.maxUsesPerMonth = updates.maxUsesPerMonth;
+      if (updates.requiresBooking !== undefined) benefit.requiresBooking = updates.requiresBooking;
+      if (updates.isShareable !== undefined) benefit.isShareable = updates.isShareable;
+      if (updates.sharedWithUserId !== undefined) benefit.sharedWithUserId = updates.sharedWithUserId;
 
-      return updatedBenefit;
+      const saved = await this.benefitRepository!.save(benefit);
+      return this.entityToType(saved);
     } catch (error) {
       console.error('Error updating benefit:', error);
       throw new Error(`Failed to update benefit: ${(error as Error).message}`);
@@ -146,17 +162,10 @@ export class BenefitManager {
 
   public async deleteBenefit(benefitId: string): Promise<boolean> {
     try {
-      const benefits = this.readBenefits();
-      const benefitIndex = benefits.findIndex(benefit => benefit.id === benefitId);
+      await this.ensureInitialized();
       
-      if (benefitIndex === -1) {
-        return false;
-      }
-
-      benefits.splice(benefitIndex, 1);
-      this.writeBenefits(benefits);
-
-      return true;
+      const result = await this.benefitRepository!.delete(benefitId);
+      return (result.affected ?? 0) > 0;
     } catch (error) {
       console.error('Error deleting benefit:', error);
       throw new Error(`Failed to delete benefit: ${(error as Error).message}`);
@@ -169,7 +178,6 @@ export class BenefitManager {
       const resultsWithServices: Array<Benefit & { services: any[] }> = [];
 
       for (const benefit of benefits) {
-        // Ensure serviceIds is an array, default to empty array if undefined
         const serviceIds = benefit.serviceIds || [];
         const services = await serviceManager.getServicesByIds(serviceIds);
         resultsWithServices.push({
@@ -187,14 +195,15 @@ export class BenefitManager {
 
   public async getActiveBenefits(): Promise<Benefit[]> {
     try {
-      const benefits = this.readBenefits();
-      const now = new Date();
+      await this.ensureInitialized();
       
-      return benefits.filter(benefit => {
-        const startDate = new Date(benefit.startDate);
-        const endDate = new Date(benefit.endDate);
-        return now >= startDate && now <= endDate;
-      });
+      const now = new Date();
+      const benefits = await this.benefitRepository!.createQueryBuilder('benefit')
+        .where('benefit.startDate <= :now', { now })
+        .andWhere('benefit.endDate >= :now', { now })
+        .getMany();
+      
+      return benefits.map(b => this.entityToType(b));
     } catch (error) {
       console.error('Error getting active benefits:', error);
       throw new Error(`Failed to get active benefits: ${(error as Error).message}`);
@@ -212,20 +221,24 @@ export class BenefitManager {
         throw new Error('This benefit is not shareable');
       }
 
-      // Create a copy of the benefit for the target user
-      const sharedBenefit: Benefit = {
-        ...benefit,
+      await this.ensureInitialized();
+      
+      const sharedBenefit = this.benefitRepository!.create({
         id: uuidv4(),
+        name: benefit.name,
+        description: benefit.description,
+        price: benefit.price,
+        serviceIds: JSON.stringify(benefit.serviceIds),
+        startDate: new Date(benefit.startDate),
+        endDate: new Date(benefit.endDate),
+        maxUsesPerMonth: benefit.maxUsesPerMonth,
+        requiresBooking: benefit.requiresBooking,
+        isShareable: benefit.isShareable,
         sharedWithUserId: targetUserId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      });
 
-      const benefits = this.readBenefits();
-      benefits.push(sharedBenefit);
-      this.writeBenefits(benefits);
-
-      return sharedBenefit;
+      const saved = await this.benefitRepository!.save(sharedBenefit);
+      return this.entityToType(saved);
     } catch (error) {
       console.error('Error sharing benefit:', error);
       throw new Error(`Failed to share benefit: ${(error as Error).message}`);

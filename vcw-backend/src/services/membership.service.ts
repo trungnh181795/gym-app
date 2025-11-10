@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import path from 'path';
+import { Repository } from 'typeorm';
+import { getDataSource } from '../config/database.config';
+import { Membership as MembershipEntity } from '../entities';
 import { 
   Membership, 
   CreateMembershipRequest, 
@@ -12,59 +13,60 @@ import { veramoCredentialsService } from './veramo-credentials.service';
 import { benefitManager } from './benefit.service';
 
 export class MembershipService {
-  private membershipsFilePath: string;
+  private membershipRepository: Repository<MembershipEntity> | null = null;
+  private initPromise: Promise<void> | null = null;
 
-  constructor() {
-    this.membershipsFilePath = path.join(process.cwd(), 'storage', 'memberships.json');
-    this.ensureStorageExists();
+  private async ensureInitialized(): Promise<void> {
+    if (this.membershipRepository) {
+      return;
+    }
+
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    this.initPromise = (async () => {
+      try {
+        const dataSource = await getDataSource();
+        this.membershipRepository = dataSource.getRepository(MembershipEntity);
+      } catch (error) {
+        this.initPromise = null;
+        throw error;
+      }
+    })();
+
+    return this.initPromise;
   }
 
-  private ensureStorageExists(): void {
-    const storageDir = path.dirname(this.membershipsFilePath);
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
-    
-    if (!fs.existsSync(this.membershipsFilePath)) {
-      fs.writeFileSync(this.membershipsFilePath, JSON.stringify([], null, 2));
-    }
-  }
-
-  private readMemberships(): Membership[] {
-    try {
-      const data = fs.readFileSync(this.membershipsFilePath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      console.error('Error reading memberships:', error);
-      return [];
-    }
-  }
-
-  private writeMemberships(memberships: Membership[]): void {
-    try {
-      fs.writeFileSync(this.membershipsFilePath, JSON.stringify(memberships, null, 2));
-    } catch (error) {
-      console.error('Error writing memberships:', error);
-      throw new Error('Failed to save memberships');
-    }
+  private entityToType(entity: MembershipEntity): Membership {
+    return {
+      id: entity.id,
+      userId: entity.userId,
+      name: entity.name,
+      description: entity.description,
+      status: entity.status as 'active' | 'expired' | 'suspended' | 'cancelled',
+      validFrom: entity.validFrom.toISOString(),
+      validUntil: entity.validUntil.toISOString(),
+      benefitIds: entity.benefitIds ? JSON.parse(entity.benefitIds) : [],
+      createdAt: entity.createdAt.toISOString(),
+      updatedAt: entity.updatedAt.toISOString()
+    };
   }
 
   public async createMembership(request: CreateMembershipRequest): Promise<{ membership: Membership; credentials: any[] }> {
     try {
-      // Verify user exists
       const user = await userService.getUserById(request.userId);
       if (!user) {
         throw new Error('User not found');
       }
 
-      // Create benefits from the request
       const benefitIds: string[] = [];
       for (const benefitData of request.benefits) {
         const benefit = await benefitManager.createBenefit({
           name: benefitData.name,
           description: benefitData.description || '',
-          price: 0, // Individual benefit price is 0, membership has the total price
-          serviceIds: [], // No specific services assigned to individual benefits
+          price: 0,
+          serviceIds: [],
           startDate: request.validFrom,
           endDate: request.validUntil,
           requiresBooking: benefitData.requiresBooking,
@@ -75,31 +77,26 @@ export class MembershipService {
         benefitIds.push(benefit.id);
       }
 
-      const memberships = this.readMemberships();
-      const now = new Date().toISOString();
-      const membershipId = uuidv4();
+      await this.ensureInitialized();
       
-      const newMembership: Membership = {
+      const membershipId = uuidv4();
+      const newMembership = this.membershipRepository!.create({
         id: membershipId,
         userId: request.userId,
         name: request.name,
         description: request.description,
         status: 'active',
-        validFrom: request.validFrom,
-        validUntil: request.validUntil,
-        benefitIds: benefitIds,
-        price: request.price,
-        createdAt: now,
-        updatedAt: now
-      };
+        validFrom: new Date(request.validFrom),
+        validUntil: new Date(request.validUntil),
+        benefitIds: JSON.stringify(benefitIds),
+      });
 
-      memberships.push(newMembership);
-      this.writeMemberships(memberships);
+      const saved = await this.membershipRepository!.save(newMembership);
+      const membership = this.entityToType(saved);
 
-      // Auto-issue benefit credentials for this membership
       const credentials = await this.issueBenefitCredentials(membershipId);
 
-      return { membership: newMembership, credentials };
+      return { membership, credentials };
     } catch (error) {
       console.error('Error creating membership:', error);
       throw new Error(`Failed to create membership: ${(error as Error).message}`);
@@ -108,8 +105,15 @@ export class MembershipService {
 
   public async getMembershipById(membershipId: string): Promise<Membership | null> {
     try {
-      const memberships = this.readMemberships();
-      return memberships.find(membership => membership.id === membershipId) || null;
+      await this.ensureInitialized();
+      
+      const membership = await this.membershipRepository!.findOne({ where: { id: membershipId } });
+      
+      if (!membership) {
+        return null;
+      }
+      
+      return this.entityToType(membership);
     } catch (error) {
       console.error('Error getting membership:', error);
       throw new Error(`Failed to get membership: ${(error as Error).message}`);
@@ -118,8 +122,10 @@ export class MembershipService {
 
   public async getMembershipsByUserId(userId: string): Promise<Membership[]> {
     try {
-      const memberships = this.readMemberships();
-      return memberships.filter(membership => membership.userId === userId);
+      await this.ensureInitialized();
+      
+      const memberships = await this.membershipRepository!.find({ where: { userId } });
+      return memberships.map(m => this.entityToType(m));
     } catch (error) {
       console.error('Error getting user memberships:', error);
       throw new Error(`Failed to get user memberships: ${(error as Error).message}`);
@@ -128,7 +134,10 @@ export class MembershipService {
 
   public async getAllMemberships(): Promise<Membership[]> {
     try {
-      return this.readMemberships();
+      await this.ensureInitialized();
+      
+      const memberships = await this.membershipRepository!.find();
+      return memberships.map(m => this.entityToType(m));
     } catch (error) {
       console.error('Error getting all memberships:', error);
       throw new Error(`Failed to get memberships: ${(error as Error).message}`);
@@ -140,14 +149,6 @@ export class MembershipService {
     updates: Partial<Pick<Membership, 'name' | 'description' | 'status' | 'validUntil' | 'benefitIds'>>
   ): Promise<Membership | null> {
     try {
-      const memberships = this.readMemberships();
-      const membershipIndex = memberships.findIndex(membership => membership.id === membershipId);
-      
-      if (membershipIndex === -1) {
-        return null;
-      }
-
-      // If benefitIds are being updated, validate them
       if (updates.benefitIds) {
         const benefits = await benefitManager.getBenefitsByIds(updates.benefitIds);
         if (benefits.length !== updates.benefitIds.length) {
@@ -155,22 +156,28 @@ export class MembershipService {
         }
       }
 
-      const updatedMembership: Membership = {
-        ...memberships[membershipIndex],
-        ...updates,
-        updatedAt: new Date().toISOString()
-      };
+      await this.ensureInitialized();
+      
+      const membership = await this.membershipRepository!.findOne({ where: { id: membershipId } });
+      
+      if (!membership) {
+        return null;
+      }
 
-      memberships[membershipIndex] = updatedMembership;
-      this.writeMemberships(memberships);
+      if (updates.name !== undefined) membership.name = updates.name;
+      if (updates.description !== undefined) membership.description = updates.description;
+      if (updates.status !== undefined) membership.status = updates.status;
+      if (updates.validUntil !== undefined) membership.validUntil = new Date(updates.validUntil);
+      if (updates.benefitIds !== undefined) membership.benefitIds = JSON.stringify(updates.benefitIds);
 
-      // If benefits were updated, re-issue credentials
+      const saved = await this.membershipRepository!.save(membership);
+
       if (updates.benefitIds) {
         await this.revokeBenefitCredentials(membershipId);
         await this.issueBenefitCredentials(membershipId);
       }
 
-      return updatedMembership;
+      return this.entityToType(saved);
     } catch (error) {
       console.error('Error updating membership:', error);
       throw new Error(`Failed to update membership: ${(error as Error).message}`);
@@ -179,20 +186,12 @@ export class MembershipService {
 
   public async deleteMembership(membershipId: string): Promise<boolean> {
     try {
-      const memberships = this.readMemberships();
-      const membershipIndex = memberships.findIndex(membership => membership.id === membershipId);
-      
-      if (membershipIndex === -1) {
-        return false;
-      }
-
-      // Revoke all benefit credentials for this membership
       await this.revokeBenefitCredentials(membershipId);
 
-      memberships.splice(membershipIndex, 1);
-      this.writeMemberships(memberships);
-
-      return true;
+      await this.ensureInitialized();
+      
+      const result = await this.membershipRepository!.delete(membershipId);
+      return (result.affected ?? 0) > 0;
     } catch (error) {
       console.error('Error deleting membership:', error);
       throw new Error(`Failed to delete membership: ${(error as Error).message}`);
@@ -272,11 +271,16 @@ export class MembershipService {
     averageBenefitsPerMembership: number;
   }> {
     try {
-      const memberships = this.readMemberships();
+      await this.ensureInitialized();
+      
+      const memberships = await this.membershipRepository!.find();
       const active = memberships.filter(m => m.status === 'active').length;
       const expired = memberships.filter(m => m.status === 'expired').length;
       const suspended = memberships.filter(m => m.status === 'suspended').length;
-      const totalBenefits = memberships.reduce((sum, m) => sum + m.benefitIds.length, 0);
+      const totalBenefits = memberships.reduce((sum, m) => {
+        const benefitIds = m.benefitIds ? JSON.parse(m.benefitIds) : [];
+        return sum + benefitIds.length;
+      }, 0);
       const averageBenefitsPerMembership = memberships.length > 0 ? totalBenefits / memberships.length : 0;
 
       return {
@@ -314,7 +318,7 @@ export class MembershipService {
 
   public async getAllMembershipsWithBenefits(): Promise<Array<Membership & { benefits: Benefit[] }>> {
     try {
-      const memberships = this.readMemberships();
+      const memberships = await this.getAllMemberships();
       const results: Array<Membership & { benefits: Benefit[] }> = [];
 
       for (const membership of memberships) {

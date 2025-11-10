@@ -1,4 +1,4 @@
-import { agent, getOrCreateUserDID } from '../config/veramo.config';
+import { getAgent, getOrCreateUserDID } from '../config/veramo.config';
 import { veramoIssuerService } from './veramo-issuer.service';
 import { storageService } from './storage.service';
 import {
@@ -101,6 +101,9 @@ export class VeramoCredentialsService {
       // Get issuer DID
       const issuerDid = veramoIssuerService.getIssuerDid();
       
+      // Get Veramo agent
+      const agent = await getAgent();
+      
       // Create the credential using Veramo
       const verifiableCredential = await agent.createVerifiableCredential({
         credential: {
@@ -168,7 +171,7 @@ export class VeramoCredentialsService {
         updatedAt: now.toISOString()
       };
       
-      const finalStoredCredential = storageService.createCredential(credentialId, storedCredential);
+      const finalStoredCredential = await storageService.createCredential(credentialId, storedCredential);
       
       console.log('Credential created and stored successfully:', credentialId);
       
@@ -204,6 +207,9 @@ export class VeramoCredentialsService {
           message: 'No JWT provided'
         };
       }
+
+      // Get Veramo agent
+      const agent = await getAgent();
 
       // Verify the credential using Veramo
       const verificationResult = await agent.verifyCredential({
@@ -297,7 +303,7 @@ export class VeramoCredentialsService {
       if (!credentialId) {
         throw new Error('Credential ID is required');
       }
-      return storageService.readCredential(credentialId);
+      return await storageService.readCredential(credentialId);
     } catch (error) {
       console.error('Error retrieving credential:', error);
       return null;
@@ -317,7 +323,7 @@ export class VeramoCredentialsService {
         status
       } = options;
 
-      const allCredentials = storageService.readAllCredentials();
+      const allCredentials = await storageService.readAllCredentials();
       
       // Filter credentials
       let filteredCredentials = allCredentials.filter((cred: StoredCredential) => {
@@ -406,7 +412,7 @@ export class VeramoCredentialsService {
         updatedAt: new Date().toISOString()
       };
 
-      storageService.updateCredential(credentialId, updatedCredential);
+      await storageService.updateCredential(credentialId, updatedCredential);
       
       console.log('Credential revoked:', credentialId);
       return true;
@@ -427,7 +433,7 @@ export class VeramoCredentialsService {
         throw new Error('Credential not found');
       }
 
-      return storageService.deleteCredential(credentialId);
+      return await storageService.deleteCredential(credentialId);
     } catch (error) {
       console.error('Error deleting credential:', error);
       throw error;
@@ -439,7 +445,7 @@ export class VeramoCredentialsService {
    */
   public async getStorageStats(): Promise<any> {
     try {
-      const allCredentials = storageService.readAllCredentials();
+      const allCredentials = await storageService.readAllCredentials();
       
       const stats = {
         total: allCredentials.length,
@@ -451,7 +457,7 @@ export class VeramoCredentialsService {
         }).length,
         storageInfo: {
           totalCredentials: allCredentials.length,
-          storageLocation: 'JSON file storage',
+          storageLocation: 'SQLite Database',
           lastModified: new Date().toISOString()
         }
       };

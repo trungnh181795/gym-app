@@ -56,6 +56,7 @@ export default function AdminUsers() {
     name: '',
     email: '',
     phone: '',
+    password: '',
     status: 'active' as User['status']
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
@@ -85,6 +86,7 @@ export default function AdminUsers() {
         name: user.name,
         email: user.email,
         phone: user.phone || '',
+        password: '', // Don't populate password when editing
         status: user.status
       });
     } else {
@@ -93,6 +95,7 @@ export default function AdminUsers() {
         name: '',
         email: '',
         phone: '',
+        password: '',
         status: 'active'
       });
     }
@@ -106,12 +109,17 @@ export default function AdminUsers() {
 
   const handleSave = async () => {
     try {
-      const userData = {
+      const userData: any = {
         name: formData.name,
         email: formData.email,
         phone: formData.phone || undefined,
         status: formData.status
       };
+
+      // Only include password if it's provided (for new users or password updates)
+      if (formData.password) {
+        userData.password = formData.password;
+      }
 
       const url = editingUser ? `/api/users/${editingUser.id}` : '/api/users';
       const method = editingUser ? 'PUT' : 'POST';
@@ -309,6 +317,15 @@ export default function AdminUsers() {
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               fullWidth
               required
+            />
+            <TextField
+              label="Password"
+              type="password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              fullWidth
+              required={!editingUser}
+              helperText={editingUser ? 'Leave blank to keep current password' : 'Required for new users'}
             />
             <TextField
               label="Phone Number"

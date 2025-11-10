@@ -13,7 +13,7 @@ import userRouter from './routes/user.route';
 import verificationRouter from './routes/verification.route';
 import { ApiResponse, ApiErrorResponse } from './types';
 import { ServiceManager } from './services/service.service';
-import { dbConnection } from './config/veramo.config';
+import { getDataSource } from './config/database.config';
 import { veramoIssuerService } from './services/veramo-issuer.service';
 
 const app = express();
@@ -147,10 +147,10 @@ process.on('SIGINT', () => {
 // Initialize default services and Veramo
 async function initializeServices() {
   try {
-    // Initialize Veramo database
-    console.log('🔄 Initializing Veramo database...');
-    await dbConnection;
-    console.log('✅ Veramo database connected');
+    // Initialize database
+    console.log('🔄 Initializing database...');
+    await getDataSource();
+    console.log('✅ Database connected');
     
     // Initialize issuer DID
     console.log('🔄 Initializing Veramo issuer service...');
