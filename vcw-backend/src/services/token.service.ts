@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import path from 'path';
+import { Repository, LessThan } from 'typeorm';
 import crypto from 'crypto';
+import { CredentialToken } from '../entities/CredentialToken.entity';
+import { getDataSource } from '../config/database.config';
+import { veramoCredentialsService } from './veramo-credentials.service';
 
-interface CredentialToken {
+interface CredentialTokenData {
   token: string;
   credentials: any[];
   createdAt: string;
@@ -11,42 +13,30 @@ interface CredentialToken {
 }
 
 export class TokenService {
-  private tokensFilePath: string;
+  private tokenRepository: Repository<CredentialToken> | null = null;
+  private initPromise: Promise<void> | null = null;
   private readonly TOKEN_VALIDITY_MINUTES = 60; // Tokens valid for 60 minutes
 
-  constructor() {
-    this.tokensFilePath = path.join(process.cwd(), 'storage', 'credential-tokens.json');
-    this.ensureStorageExists();
-  }
+  private async ensureInitialized(): Promise<void> {
+    if (this.tokenRepository) {
+      return;
+    }
 
-  private ensureStorageExists(): void {
-    const storageDir = path.dirname(this.tokensFilePath);
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
+    if (this.initPromise) {
+      return this.initPromise;
     }
-    
-    if (!fs.existsSync(this.tokensFilePath)) {
-      fs.writeFileSync(this.tokensFilePath, JSON.stringify([], null, 2));
-    }
-  }
 
-  private readTokens(): CredentialToken[] {
-    try {
-      const data = fs.readFileSync(this.tokensFilePath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      console.error('Error reading tokens:', error);
-      return [];
-    }
-  }
+    this.initPromise = (async () => {
+      try {
+        const dataSource = await getDataSource();
+        this.tokenRepository = dataSource.getRepository(CredentialToken);
+      } catch (error) {
+        console.error('Error initializing token service:', error);
+        throw error;
+      }
+    })();
 
-  private writeTokens(tokens: CredentialToken[]): void {
-    try {
-      fs.writeFileSync(this.tokensFilePath, JSON.stringify(tokens, null, 2));
-    } catch (error) {
-      console.error('Error writing tokens:', error);
-      throw new Error('Failed to save tokens');
-    }
+    return this.initPromise;
   }
 
   // Generate a short, secure token
@@ -56,72 +46,129 @@ export class TokenService {
   }
 
   // Create a token for credentials
-  public createCredentialToken(credentials: any[]): string {
-    const tokens = this.readTokens();
-    const token = this.generateToken();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.TOKEN_VALIDITY_MINUTES * 60 * 1000);
+  public async createCredentialToken(credentials: any[], permanent: boolean = false): Promise<string> {
+    try {
+      await this.ensureInitialized();
 
-    const credentialToken: CredentialToken = {
-      token,
-      credentials,
-      createdAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString()
-    };
+      const token = this.generateToken();
+      const now = new Date();
+      // For permanent tokens, set expiration to 100 years in the future
+      const expiresAt = permanent 
+        ? new Date(now.getTime() + 100 * 365 * 24 * 60 * 60 * 1000) 
+        : new Date(now.getTime() + this.TOKEN_VALIDITY_MINUTES * 60 * 1000);
 
-    tokens.push(credentialToken);
-    this.writeTokens(tokens);
+      // Store credentials as JSON string in a single credential reference
+      // For now, we'll store the first credential ID or a combined reference
+      const credentialId = Array.isArray(credentials) && credentials.length > 0
+        ? credentials[0].id || uuidv4()
+        : uuidv4();
 
-    return token;
+      const credentialToken = this.tokenRepository!.create({
+        id: uuidv4(),
+        token,
+        credentialId,
+        expiresAt,
+        used: false
+      });
+
+      await this.tokenRepository!.save(credentialToken);
+      return token;
+    } catch (error) {
+      console.error('Error creating credential token:', error);
+      throw new Error(`Failed to create credential token: ${(error as Error).message}`);
+    }
   }
 
   // Get credentials by token
-  public getCredentialsByToken(token: string): any[] | null {
-    const tokens = this.readTokens();
-    const credentialToken = tokens.find(t => t.token === token);
+  public async getCredentialsByToken(token: string): Promise<any[] | null> {
+    try {
+      await this.ensureInitialized();
 
-    if (!credentialToken) {
-      return null;
+      const credentialToken = await this.tokenRepository!.findOne({ 
+        where: { token } 
+      });
+
+      if (!credentialToken) {
+        return null;
+      }
+
+      // Check if token has expired
+      const now = new Date();
+      if (now > credentialToken.expiresAt) {
+        return null;
+      }
+
+      // Check if token was already used
+      if (credentialToken.used) {
+        return null;
+      }
+
+      // Fetch the full credential from SQLite database
+      const credential = await veramoCredentialsService.getCredential(credentialToken.credentialId);
+      
+      if (!credential) {
+        console.error('Credential not found for ID:', credentialToken.credentialId);
+        return null;
+      }
+
+      // Return the full credential wrapped in an array
+      return [credential];
+    } catch (error) {
+      console.error('Error getting credentials by token:', error);
+      throw new Error(`Failed to get credentials by token: ${(error as Error).message}`);
     }
+  }
 
-    // Check if token has expired
-    const now = new Date();
-    const expiresAt = new Date(credentialToken.expiresAt);
+  // Mark token as used
+  public async markTokenAsUsed(token: string): Promise<boolean> {
+    try {
+      await this.ensureInitialized();
 
-    if (now > expiresAt) {
-      // Token has expired
-      return null;
+      const credentialToken = await this.tokenRepository!.findOne({ 
+        where: { token } 
+      });
+
+      if (!credentialToken) {
+        return false;
+      }
+
+      credentialToken.used = true;
+      await this.tokenRepository!.save(credentialToken);
+      return true;
+    } catch (error) {
+      console.error('Error marking token as used:', error);
+      throw new Error(`Failed to mark token as used: ${(error as Error).message}`);
     }
-
-    return credentialToken.credentials;
   }
 
   // Clean up expired tokens (can be called periodically)
-  public cleanupExpiredTokens(): number {
-    const tokens = this.readTokens();
-    const now = new Date();
-    
-    const validTokens = tokens.filter(t => new Date(t.expiresAt) > now);
-    const removedCount = tokens.length - validTokens.length;
+  public async cleanupExpiredTokens(): Promise<number> {
+    try {
+      await this.ensureInitialized();
 
-    if (removedCount > 0) {
-      this.writeTokens(validTokens);
+      const now = new Date();
+      const result = await this.tokenRepository!.delete({
+        expiresAt: LessThan(now)
+      });
+
+      return result.affected || 0;
+    } catch (error) {
+      console.error('Error cleaning up expired tokens:', error);
+      throw new Error(`Failed to cleanup expired tokens: ${(error as Error).message}`);
     }
-
-    return removedCount;
   }
 
   // Revoke a specific token
-  public revokeToken(token: string): boolean {
-    const tokens = this.readTokens();
-    const filteredTokens = tokens.filter(t => t.token !== token);
-    
-    if (filteredTokens.length < tokens.length) {
-      this.writeTokens(filteredTokens);
-      return true;
-    }
+  public async revokeToken(token: string): Promise<boolean> {
+    try {
+      await this.ensureInitialized();
 
-    return false;
+      const result = await this.tokenRepository!.delete({ token });
+      return (result.affected || 0) > 0;
+    } catch (error) {
+      console.error('Error revoking token:', error);
+      throw new Error(`Failed to revoke token: ${(error as Error).message}`);
+    }
   }
 }
 

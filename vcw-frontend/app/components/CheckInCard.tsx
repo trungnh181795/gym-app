@@ -43,14 +43,6 @@ export default function CheckInCard({
   const displayExpiry = expiryDate || primaryCredential?.expireDate || credentialData?.validUntil;
   const displayPlan = credentialSubject?.membershipPlan || metadata?.plan;
   
-  console.log('CheckInCard - Final Display Values:', {
-    displayName,
-    displayBenefit,
-    displayExpiry,
-    displayPlan,
-    usesRemaining
-  });
-  
   // Extract user initials for avatar
   const getInitials = (name?: string) => {
     if (!name) return 'U';
@@ -105,7 +97,7 @@ export default function CheckInCard({
               border: '3px solid white'
             }}
           >
-            {getInitials(userName)}
+            {getInitials(displayName)}
           </Avatar>
           <Box flex={1}>
             <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 0.5 }}>

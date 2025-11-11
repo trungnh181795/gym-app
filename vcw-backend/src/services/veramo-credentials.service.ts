@@ -142,18 +142,26 @@ export class VeramoCredentialsService {
         save: false, // We'll handle storage ourselves
       });
       
-      console.log('Veramo created credential:', {
-        id: credentialId,
-        type: credentialTypes,
-        issuer: issuerDid,
-        holder: finalHolderDid
-      });
+      // Extract the actual credential and JWT from Veramo response
+      // Veramo returns the VC in the verifiableCredential property and JWT in proof.jwt
+      const vcObject = verifiableCredential.verifiableCredential || verifiableCredential;
+      const jwtToken = verifiableCredential.proof?.jwt || '';
+      
+      if (!jwtToken) {
+        console.error('Veramo response structure:', JSON.stringify(verifiableCredential, null, 2));
+        throw new Error('Failed to get JWT from Veramo credential');
+      }
+      
+      if (!vcObject) {
+        console.error('Veramo response structure:', JSON.stringify(verifiableCredential, null, 2));
+        throw new Error('Failed to get credential object from Veramo');
+      }
       
       // Store the credential
       const storedCredential: StoredCredential = {
         id: credentialId,
-        credential: verifiableCredential.verifiableCredential,
-        jwt: verifiableCredential.proof.jwt,
+        credential: vcObject,
+        jwt: jwtToken,
         holderDid: finalHolderDid,
         benefitId: benefitId,
         membershipId: membershipId,
@@ -172,8 +180,6 @@ export class VeramoCredentialsService {
       };
       
       const finalStoredCredential = await storageService.createCredential(credentialId, storedCredential);
-      
-      console.log('Credential created and stored successfully:', credentialId);
       
       return {
         id: credentialId,
@@ -214,11 +220,6 @@ export class VeramoCredentialsService {
       // Verify the credential using Veramo
       const verificationResult = await agent.verifyCredential({
         credential: jwt,
-      });
-
-      console.log('Veramo verification result:', {
-        verified: verificationResult.verified,
-        issuer: verificationResult.verifiableCredential.issuer
       });
 
       if (!verificationResult.verified) {
@@ -277,11 +278,20 @@ export class VeramoCredentialsService {
         usesRemaining = benefit.maxUsesPerMonth;
       }
 
+      // Extract user name and benefit name from credential subject
+      const userName = credentialSubject.name || credentialSubject.userName || 'Member';
+      const benefitName = credentialSubject.benefitName || benefit?.name || 'Standard Plan';
+      const expiryDate = vc.expirationDate;
+
       return {
         valid: true,
         payload: null,
         credential: vc,
-        message: 'Credential is valid'
+        message: 'Credential is valid',
+        userName,
+        benefitName,
+        expiryDate,
+        usesRemaining
       };
 
     } catch (error) {
@@ -366,10 +376,16 @@ export class VeramoCredentialsService {
             name: credentialSubject.name || cred.metadata.name,
             plan: credentialSubject.membershipPlan || cred.metadata.plan
           },
+          holder: cred.holderDid,
+          holderName: credentialSubject.name || cred.metadata.name || 'Unknown',
+          benefitId: cred.benefitId,
+          benefitName: cred.metadata.benefitName || 'Unknown Benefit',
+          membershipId: cred.membershipId,
+          membershipName: cred.metadata.plan || 'Unknown Membership',
           issuer: issuerValue,
           issuedAt: cred.createdAt,
+          expiresAt: cred.expireDate,
           status: cred.status,
-          membershipId: cred.membershipId,
           createdAt: cred.createdAt,
           updatedAt: cred.updatedAt
         };
@@ -414,7 +430,6 @@ export class VeramoCredentialsService {
 
       await storageService.updateCredential(credentialId, updatedCredential);
       
-      console.log('Credential revoked:', credentialId);
       return true;
     } catch (error) {
       console.error('Error revoking credential:', error);

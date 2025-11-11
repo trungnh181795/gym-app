@@ -49,6 +49,7 @@ interface Benefit {
   requiresBooking?: boolean;
   isShareable: boolean;
   credentialId?: string;
+  isShared?: boolean; // Flag to indicate if this is a shared benefit
 }
 
 export default function ClientBenefits() {
@@ -144,15 +145,24 @@ export default function ClientBenefits() {
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                     <Typography variant="h6" component="h2">
                       {benefit.name}
+                      {benefit.isShared && (
+                        <Chip 
+                          label="Shared with you" 
+                          color="info" 
+                          size="small" 
+                          icon={<ShareIcon />}
+                          sx={{ ml: 1 }}
+                        />
+                      )}
                     </Typography>
-                    <Box display="flex" gap={1}>
+                    <Box display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
                       {isExpired(benefit.endDate) && (
                         <Chip label="Expired" color="error" size="small" />
                       )}
                       {isExpiringSoon(benefit.endDate) && !isExpired(benefit.endDate) && (
                         <Chip label="Expiring Soon" color="warning" size="small" />
                       )}
-                      {benefit.isShareable && (
+                      {benefit.isShareable && !benefit.isShared && (
                         <Chip label="Shareable" color="primary" size="small" icon={<ShareIcon />} />
                       )}
                     </Box>

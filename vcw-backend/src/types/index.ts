@@ -252,6 +252,10 @@ export interface VerificationResult {
   payload: JWTPayload | null;
   credential: VerifiableCredential | null;
   message: string;
+  userName?: string;
+  benefitName?: string;
+  expiryDate?: string;
+  usesRemaining?: number;
 }
 
 // Storage Statistics

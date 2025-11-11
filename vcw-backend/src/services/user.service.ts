@@ -134,6 +134,36 @@ export class UserService {
     try {
       await this.ensureInitialized();
       
+      // Check if user exists
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (!user) {
+        return false;
+      }
+
+      // Import membership service to delete related memberships
+      const { membershipService } = await import('./membership.service');
+      
+      // Get all memberships for this user
+      const memberships = await membershipService.getMembershipsByUserId(userId);
+      
+      // Delete all memberships (this will also revoke associated credentials)
+      for (const membership of memberships) {
+        await membershipService.deleteMembership(membership.id);
+      }
+      
+      // Import storage service to delete any remaining credentials
+      const { storageService } = await import('./storage.service');
+      const allCredentials = await storageService.readAllCredentials();
+      const userCredentials = allCredentials.filter(
+        c => c.metadata && typeof c.metadata === 'object' && (c.metadata as any).userId === userId
+      );
+      
+      // Delete remaining credentials
+      for (const credential of userCredentials) {
+        await storageService.deleteCredential(credential.id);
+      }
+      
+      // Now delete the user
       const result = await this.userRepo.delete(userId);
       return !!(result.affected && result.affected > 0);
     } catch (error) {

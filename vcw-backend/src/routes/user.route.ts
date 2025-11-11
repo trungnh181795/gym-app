@@ -3,7 +3,6 @@ import jwt from 'jsonwebtoken';
 import { ApiResponse, ApiErrorResponse } from '../types';
 import { benefitManager } from '../services/benefit.service';
 import { membershipService } from '../services/membership.service';
-import { credentialsService } from '../services/credentials.service';
 import { serviceManager } from '../services/service.service';
 import { storageService } from '../services/storage.service';
 
@@ -118,8 +117,32 @@ router.get('/benefits', authenticateUser, async (req: Request, res: Response) =>
     // Get all services for mapping
     const allServices = await serviceManager.getAllServices();
 
-    // Get credentials for each benefit using storage service
+    // Get credentials for this user
     const allCredentials = await storageService.readAllCredentials();
+    
+    // Get all credentials where this user is the holder (includes both owned and shared)
+    const userCredentials = allCredentials.filter(c => 
+      c.metadata?.userId === userId && c.status === 'active'
+    );
+    
+    // Get benefit IDs from user's credentials
+    const userBenefitIds = userCredentials
+      .map(c => c.benefitId)
+      .filter(Boolean);
+    
+    // Get all the benefits for these credentials
+    if (userBenefitIds.length > 0) {
+      const allBenefits = await benefitManager.getAllBenefits();
+      const credentialBenefits = allBenefits.filter(b => userBenefitIds.includes(b.id));
+      
+      // Add these benefits to userBenefits (avoid duplicates)
+      const existingBenefitIds = new Set(userBenefits.map(b => b.id));
+      credentialBenefits.forEach(benefit => {
+        if (!existingBenefitIds.has(benefit.id)) {
+          userBenefits.push(benefit);
+        }
+      });
+    }
     
     // Enrich benefits with service details and credential IDs
     const enrichedBenefits = userBenefits.map(benefit => {
@@ -130,11 +153,10 @@ router.get('/benefits', authenticateUser, async (req: Request, res: Response) =>
       ).filter(Boolean);
 
       // Find credential for this benefit and user
-      const credential = allCredentials.find(c => 
-        c.benefitId === benefit.id && 
-        c.metadata?.userId === userId &&
-        c.status === 'active'
-      );
+      const credential = userCredentials.find(c => c.benefitId === benefit.id);
+      
+      // Check if this is a shared benefit (benefit.sharedWithUserId matches current user)
+      const isShared = benefit.sharedWithUserId === userId;
 
       return {
         id: benefit.id,
@@ -147,7 +169,8 @@ router.get('/benefits', authenticateUser, async (req: Request, res: Response) =>
         maxUsesPerMonth: benefit.maxUsesPerMonth,
         requiresBooking: benefit.requiresBooking || false,
         isShareable: benefit.isShareable || false,
-        credentialId: credential?.id
+        credentialId: credential?.id,
+        isShared: isShared // Flag to indicate if this is a shared benefit
       };
     });
 
@@ -214,12 +237,24 @@ router.get('/credentials', authenticateUser, async (req: Request, res: Response)
     }
 
     const allCredentials = await storageService.readAllCredentials();
+    
+    // Get all credentials where this user is the holder
     const userCredentials = allCredentials.filter(c => c.metadata?.userId === userId);
+    
+    // For each credential, check if it's a shared benefit
+    const enrichedCredentials = await Promise.all(userCredentials.map(async (c) => {
+      if (c.benefitId) {
+        const benefit = await benefitManager.getBenefitById(c.benefitId);
+        const isShared = benefit?.sharedWithUserId === userId;
+        return { ...c, isShared };
+      }
+      return { ...c, isShared: false };
+    }));
 
     const response: ApiResponse = {
       success: true,
       message: 'User credentials retrieved successfully',
-      data: userCredentials
+      data: enrichedCredentials
     };
 
     res.json(response);

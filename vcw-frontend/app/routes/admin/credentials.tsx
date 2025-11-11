@@ -22,7 +22,8 @@ import {
 import {
   Visibility as ViewIcon,
   QrCode as QRIcon,
-  Badge as CredentialIcon
+  Badge as CredentialIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import QRCodeDisplay from '../../components/QRCodeDisplay';
 
@@ -34,7 +35,7 @@ interface Credential {
   status: 'active' | 'revoked' | 'expired';
   issuedAt: string;
   expiresAt: string;
-  proof: {
+  proof?: {
     type: string;
     created: string;
     proofPurpose: string;
@@ -68,7 +69,8 @@ export default function AdminCredentials() {
       setLoading(true);
       const response = await fetch('/api/credentials/with-details');
       const data = await response.json();
-      setCredentials(data.data || []);
+
+      setCredentials(data?.data?.credentials || []);
     } catch (error) {
       console.error('Error fetching credentials:', error);
       setSnackbar({ open: true, message: 'Failed to fetch credentials', severity: 'error' });
@@ -101,6 +103,24 @@ export default function AdminCredentials() {
     } catch (error) {
       console.error('Error revoking credential:', error);
       setSnackbar({ open: true, message: 'Failed to revoke credential', severity: 'error' });
+    }
+  };
+
+  const deleteCredential = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this credential? This action cannot be undone.')) return;
+
+    try {
+      const response = await fetch(`/api/credentials/${id}`, { method: 'DELETE' });
+      if (response.ok) {
+        setSnackbar({ open: true, message: 'Credential deleted successfully', severity: 'success' });
+        setDialogOpen(false);
+        fetchCredentials();
+      } else {
+        throw new Error('Failed to delete credential');
+      }
+    } catch (error) {
+      console.error('Error deleting credential:', error);
+      setSnackbar({ open: true, message: 'Failed to delete credential', severity: 'error' });
     }
   };
 
@@ -226,6 +246,13 @@ export default function AdminCredentials() {
                     >
                       <QRIcon />
                     </IconButton>
+                    <IconButton 
+                      onClick={() => deleteCredential(credential.id)} 
+                      size="small" 
+                      color="error"
+                    >
+                      <DeleteIcon />
+                    </IconButton>
                   </TableCell>
                 </TableRow>
               ))
@@ -287,42 +314,68 @@ export default function AdminCredentials() {
                 Proof Information
               </Typography>
               
-              <Box mb={2}>
-                <Typography variant="body2" color="text.secondary">Type:</Typography>
-                <Typography variant="body1">
-                  {selectedCredential.proof.type}
-                </Typography>
-              </Box>
+              {selectedCredential.proof ? (
+                <>
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary">Type:</Typography>
+                    <Typography variant="body1">
+                      {selectedCredential.proof.type}
+                    </Typography>
+                  </Box>
 
-              <Box mb={2}>
-                <Typography variant="body2" color="text.secondary">Created:</Typography>
-                <Typography variant="body1">
-                  {new Date(selectedCredential.proof.created).toLocaleString()}
-                </Typography>
-              </Box>
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary">Created:</Typography>
+                    <Typography variant="body1">
+                      {new Date(selectedCredential.proof.created).toLocaleString()}
+                    </Typography>
+                  </Box>
 
-              <Box mb={2}>
-                <Typography variant="body2" color="text.secondary">Purpose:</Typography>
-                <Typography variant="body1">
-                  {selectedCredential.proof.proofPurpose}
-                </Typography>
-              </Box>
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary">Purpose:</Typography>
+                    <Typography variant="body1">
+                      {selectedCredential.proof.proofPurpose}
+                    </Typography>
+                  </Box>
 
-              <Box mb={2}>
-                <Typography variant="body2" color="text.secondary">Verification Method:</Typography>
-                <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                  {selectedCredential.proof.verificationMethod}
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary">Verification Method:</Typography>
+                    <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                      {selectedCredential.proof.verificationMethod}
+                    </Typography>
+                  </Box>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No proof information available
                 </Typography>
-              </Box>
+              )}
 
               {selectedCredential.status === 'active' && !isExpired(selectedCredential.expiresAt) && (
-                <Box mt={3}>
+                <Box mt={3} display="flex" gap={2}>
                   <Button
                     variant="outlined"
                     color="error"
                     onClick={() => revokeCredential(selectedCredential.id)}
                   >
                     Revoke Credential
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={() => deleteCredential(selectedCredential.id)}
+                  >
+                    Delete Credential
+                  </Button>
+                </Box>
+              )}
+              {(selectedCredential.status === 'revoked' || isExpired(selectedCredential.expiresAt)) && (
+                <Box mt={3}>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={() => deleteCredential(selectedCredential.id)}
+                  >
+                    Delete Credential
                   </Button>
                 </Box>
               )}

@@ -1,3 +1,19 @@
+/**
+ * LEGACY SERVICE - PARTIALLY USED FOR KEY MANAGEMENT
+ * 
+ * This service is maintained primarily for reading cryptographic keys from PEM files.
+ * The application now uses veramo-issuer.service.ts for all DID and credential issuance operations.
+ * 
+ * Still used for:
+ * - Reading issuer public/private keys from config/issuer-*.pem files
+ * 
+ * Not used for:
+ * - DID Document creation (handled by Veramo)
+ * - Credential signing (handled by Veramo)
+ * 
+ * @deprecated For credential operations, use veramo-issuer.service.ts instead
+ */
+
 import fs from 'fs';
 import path from 'path';
 import { ISSUER_DID, DID_CONFIG, GYM_CONFIG } from '../config';

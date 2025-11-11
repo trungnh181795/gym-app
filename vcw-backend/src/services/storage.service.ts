@@ -31,8 +31,8 @@ export class StorageService {
       try {
         const dataSource = await getDataSource();
         this.credentialRepository = dataSource.getRepository(StoredCredentialEntity);
-        const count = await this.credentialRepository.count();
-        console.log(`Storage service initialized with ${count} credentials`);
+        const count = await this.credentialRepository!.count();
+        this.initPromise = null;
       } catch (error) {
         this.initPromise = null;
         throw error;
@@ -79,9 +79,9 @@ export class StorageService {
         metadata: credential.metadata ? JSON.stringify(credential.metadata) : undefined,
       });
 
-      const saved = await this.credentialRepository!.save(newCredential);
-      console.log(`Credential ${id} created successfully`);
-      return this.entityToType(saved);
+      await this.credentialRepository!.save(newCredential);
+      
+      return this.entityToType(newCredential);
     } catch (error) {
       console.error('Error creating credential:', error);
       throw error;
@@ -163,7 +163,6 @@ export class StorageService {
       }
 
       await this.credentialRepository!.save(credential);
-      console.log(`Credential ${id} updated successfully`);
       return true;
     } catch (error) {
       console.error('Error updating credential:', error);
@@ -178,9 +177,6 @@ export class StorageService {
       const result = await this.credentialRepository!.delete(id);
       const deleted = (result.affected ?? 0) > 0;
       
-      if (deleted) {
-        console.log(`Credential ${id} deleted successfully`);
-      }
       return deleted;
     } catch (error) {
       console.error('Error deleting credential:', error);

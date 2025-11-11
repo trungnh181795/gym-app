@@ -19,7 +19,7 @@ router.post('/verify-token', async (req: Request, res: Response): Promise<void> 
     }
 
     // Get credentials from token
-    const credentials = tokenService.getCredentialsByToken(token);
+    const credentials = await tokenService.getCredentialsByToken(token);
 
     if (!credentials || credentials.length === 0) {
       res.status(404).json({

@@ -4,6 +4,28 @@ import { CreateCredentialRequest, CreateBenefitCredentialRequest, ApiResponse, A
 
 const router = express.Router();
 
+// GET /api/credentials/with-details - Get all credentials with full details
+router.get('/with-details', async (req: Request, res: Response) => {
+    try {
+        const result = await veramoCredentialsService.listCredentials({});
+        
+        const response: ApiResponse = {
+            success: true,
+            message: 'Credentials with details retrieved successfully',
+            data: result
+        };
+        
+        res.json(response);
+    } catch (error) {
+        console.error('Error listing credentials with details:', error);
+        const errorResponse: ApiErrorResponse = {
+            error: 'Internal Server Error',
+            message: 'Failed to retrieve credentials with details'
+        };
+        res.status(500).json(errorResponse);
+    }
+});
+
 // POST /api/credentials/issue - Issue a new credential
 router.post('/issue', async (req: Request, res: Response) => {
     try {
@@ -333,7 +355,7 @@ router.get('/:id/qr-client', async (req: Request, res: Response) => {
         
         // Create a temporary token for this credential (expires in 60 seconds)
         const credentials = [credential];
-        const token = require('../services/token.service').tokenService.createCredentialToken(credentials);
+        const token = await require('../services/token.service').tokenService.createCredentialToken(credentials);
         
         const response: ApiResponse = {
             success: true,
@@ -362,19 +384,52 @@ router.get('/:id/qr', async (req: Request, res: Response) => {
         const { id } = req.params;
         const { admin } = req.query; // Admin gets permanent QR, client gets 60-second QR
         
-        const qrData = await veramoCredentialsService.generateQRCodeData(id);
+        // Get the credential
+        const credential = await veramoCredentialsService.getCredential(id);
         
-        const response: ApiResponse = {
-            success: true,
-            message: 'QR code data generated successfully',
-            data: {
-                credentialJson: qrData,
-                qrType: admin === 'true' ? 'permanent' : 'temporary',
-                expiresAt: admin === 'true' ? null : new Date(Date.now() + 60000).toISOString() // 60 seconds for client
-            }
-        };
-        
-        res.json(response);
+        if (!credential) {
+            const errorResponse: ApiErrorResponse = {
+                error: 'Not Found',
+                message: 'Credential not found'
+            };
+            res.status(404).json(errorResponse);
+            return;
+        }
+
+        if (admin === 'true') {
+            // For admin: create a permanent token (no expiration)
+            // We'll use a special token that doesn't expire
+            const credentials = [credential];
+            const token = await require('../services/token.service').tokenService.createCredentialToken(credentials, true); // true = permanent
+            
+            const response: ApiResponse = {
+                success: true,
+                message: 'Permanent QR token generated',
+                data: {
+                    credentialJson: token,
+                    qrType: 'permanent',
+                    expiresAt: null
+                }
+            };
+            
+            res.json(response);
+        } else {
+            // For client: create temporary 60-second token
+            const credentials = [credential];
+            const token = await require('../services/token.service').tokenService.createCredentialToken(credentials);
+            
+            const response: ApiResponse = {
+                success: true,
+                message: 'Temporary QR token generated',
+                data: {
+                    credentialJson: token,
+                    qrType: 'temporary',
+                    expiresAt: new Date(Date.now() + 60000).toISOString() // 60 seconds
+                }
+            };
+            
+            res.json(response);
+        }
     } catch (error) {
         console.error('Error generating QR code:', error);
         const errorResponse: ApiErrorResponse = {

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import QRCode from "react-qr-code";
 import {
   Box,
   Paper,
@@ -37,7 +36,6 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   CardMembership as MembershipIcon,
-  QrCode as QRIcon,
 } from "@mui/icons-material";
 
 interface User {
@@ -84,9 +82,6 @@ export default function AdminMemberships() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingBenefits, setLoadingBenefits] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [qrDialogOpen, setQrDialogOpen] = useState(false);
-  const [credentialToken, setCredentialToken] = useState<string>("");
-  const [qrTimer, setQrTimer] = useState(60);
   const [editingMembership, setEditingMembership] = useState<Membership | null>(
     null
   );
@@ -114,17 +109,6 @@ export default function AdminMemberships() {
     fetchUsers();
     fetchBenefits();
   }, []);
-
-  // QR Code timer countdown
-  useEffect(() => {
-    if (qrDialogOpen && qrTimer > 0) {
-      const timer = setTimeout(() => setQrTimer(qrTimer - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (qrTimer === 0) {
-      setQrDialogOpen(false);
-      setQrTimer(60);
-    }
-  }, [qrDialogOpen, qrTimer]);
 
   const fetchMemberships = async () => {
     try {
@@ -173,12 +157,17 @@ export default function AdminMemberships() {
   const handleOpenDialog = (membership?: Membership) => {
     if (membership) {
       setEditingMembership(membership);
+      console.log('Opening edit dialog for membership:', membership);
+      console.log('Benefit IDs:', membership.benefitIds);
+      
       // Convert benefitIds to benefits array structure
       const benefitsArray = membership.benefitIds.map((id) => ({
         benefitId: id,
         isShared: false,
         sharedWithUserId: undefined,
       }));
+      console.log('Benefits array created:', benefitsArray);
+      
       setFormData({
         userId: membership.userId,
         name: membership.name,
@@ -248,13 +237,6 @@ export default function AdminMemberships() {
       if (response.ok) {
         const result = await response.json();
 
-        // Store credential token and show QR code for new memberships
-        if (!editingMembership && result.data?.credentialToken) {
-          setCredentialToken(result.data.credentialToken);
-          setQrTimer(60); // Reset timer
-          setQrDialogOpen(true);
-        }
-
         setSnackbar({
           open: true,
           message: `Membership ${editingMembership ? "updated" : "created"} successfully`,
@@ -297,27 +279,6 @@ export default function AdminMemberships() {
       setSnackbar({
         open: true,
         message: "Failed to delete membership",
-        severity: "error",
-      });
-    }
-  };
-
-  const generateQR = async (membershipId: string) => {
-    try {
-      const response = await fetch(`/api/memberships/${membershipId}/qr-admin`);
-      const data = await response.json();
-
-      if (response.ok) {
-        // Open QR code in new window or show in dialog
-        alert("QR code generated successfully!");
-      } else {
-        throw new Error("Failed to generate QR code");
-      }
-    } catch (error) {
-      console.error("Error generating QR code:", error);
-      setSnackbar({
-        open: true,
-        message: "Failed to generate QR code",
         severity: "error",
       });
     }
@@ -452,13 +413,6 @@ export default function AdminMemberships() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <IconButton
-                      onClick={() => generateQR(membership.id)}
-                      size="small"
-                      color="primary"
-                    >
-                      <QRIcon />
-                    </IconButton>
                     <IconButton
                       onClick={() => handleOpenDialog(membership)}
                       size="small"
@@ -724,82 +678,6 @@ export default function AdminMemberships() {
           <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button onClick={handleSave} variant="contained">
             {editingMembership ? "Update" : "Create"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* QR Code Dialog */}
-      <Dialog
-        open={qrDialogOpen}
-        onClose={() => {
-          setQrDialogOpen(false);
-          setQrTimer(60);
-        }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box
-            display="flex"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <Typography variant="h6">
-              Membership Credentials Generated
-            </Typography>
-            <Chip
-              label={`${qrTimer}s remaining`}
-              color={qrTimer < 20 ? "error" : "primary"}
-              size="small"
-            />
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Alert severity="warning" sx={{ mb: 3 }}>
-            <Typography variant="body2" fontWeight="bold" gutterBottom>
-              Important: Share this QR code with the member!
-            </Typography>
-            <Typography variant="body2">
-              This QR code will disappear in {qrTimer} seconds. The member
-              should save a screenshot for check-in verification.
-            </Typography>
-          </Alert>
-
-          {credentialToken && (
-            <Box
-              display="flex"
-              flexDirection="column"
-              alignItems="center"
-              gap={3}
-            >
-              <Paper elevation={3} sx={{ p: 3, bgcolor: "white" }}>
-                <QRCode value={credentialToken} size={300} level="L" />
-              </Paper>
-
-              <Box textAlign="center">
-                <Typography variant="subtitle2" gutterBottom>
-                  Credential Token
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ fontFamily: "monospace", wordBreak: "break-all" }}
-                >
-                  {credentialToken}
-                </Typography>
-              </Box>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => {
-              setQrDialogOpen(false);
-              setQrTimer(60);
-            }}
-            variant="contained"
-          >
-            Close
           </Button>
         </DialogActions>
       </Dialog>

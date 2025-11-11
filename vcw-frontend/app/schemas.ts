@@ -11,10 +11,10 @@ export type UserFormData = z.infer<typeof userSchema>;
 export const benefitSchema = z.object({
   type: z.enum(['gym_access', 'pool_access', 'sauna_access', 'personal_trainer', 'group_classes', 'nutrition_consultation'] as const),
   name: z.string().min(2, 'Benefit name is required'),
-  description: z.string().optional().default(''),
+  description: z.string().optional(),
   maxUsesPerMonth: z.number().int().positive().optional(),
   requiresBooking: z.boolean(),
-  isShared: z.boolean().optional().default(false),
+  isShared: z.boolean().optional(),
   sharedWithUserId: z.string().optional(),
 });
 
@@ -24,7 +24,7 @@ export type BenefitFormData = z.infer<typeof benefitSchema>;
 export const membershipSchema = z.object({
   userId: z.string().min(1, 'User is required'),
   name: z.string().min(2, 'Membership name is required'),
-  description: z.string().default(''),
+  description: z.string().optional(),
   validFrom: z.string().min(1, 'Start date is required'),
   validUntil: z.string().min(1, 'End date is required'),
   price: z.number().positive('Price must be positive'),

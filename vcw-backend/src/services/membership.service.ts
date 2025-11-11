@@ -94,7 +94,15 @@ export class MembershipService {
       const saved = await this.membershipRepository!.save(newMembership);
       const membership = this.entityToType(saved);
 
-      const credentials = await this.issueBenefitCredentials(membershipId);
+      let credentials;
+      try {
+        credentials = await this.issueBenefitCredentials(membershipId);
+      } catch (credError) {
+        console.error('Error issuing credentials for membership:', credError);
+        // Rollback: delete the membership we just created
+        await this.membershipRepository!.delete(membershipId);
+        throw new Error(`Failed to issue credentials: ${(credError as Error).message}`);
+      }
 
       return { membership, credentials };
     } catch (error) {
@@ -211,6 +219,7 @@ export class MembershipService {
       }
 
       const benefits = await benefitManager.getBenefitsByIds(membership.benefitIds);
+      
       const issuedCredentials: any[] = [];
 
       // Issue a credential for each benefit

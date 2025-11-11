@@ -1,3 +1,20 @@
+/**
+ * LEGACY SERVICE - NOT USED IN PRODUCTION
+ * 
+ * This service is maintained for backward compatibility and reference only.
+ * The application now uses veramo-credentials.service.ts for all credential operations.
+ * 
+ * Original purpose: Manual JWT credential creation and verification using JOSE library
+ * Current status: Refactored to use TypeORM but not actively used in the application
+ * 
+ * Key differences from veramo-credentials.service.ts:
+ * - Uses JOSE library directly instead of Veramo framework
+ * - Manual JWT signing/verification
+ * - Less standardized DID/VC handling
+ * 
+ * @deprecated Use veramo-credentials.service.ts for all credential operations
+ */
+
 import { SignJWT, jwtVerify, importPKCS8, importSPKI } from 'jose';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';

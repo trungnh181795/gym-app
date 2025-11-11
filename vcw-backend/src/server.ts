@@ -5,7 +5,6 @@ import credentialsRouter from './routes/credentials.route';
 import issuerRouter from './routes/issuer.route';
 import usersRouter from './routes/users.route';
 import membershipsRouter from './routes/memberships.route';
-import sharingRouter from './routes/sharing.route';
 import servicesRouter from './routes/services.route';
 import benefitsRouter from './routes/benefits.route';
 import authRouter from './routes/auth.route';
@@ -56,7 +55,6 @@ app.use('/api/issuer', issuerRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/user', userRouter); // User-specific endpoints
 app.use('/api/memberships', membershipsRouter);
-app.use('/api/shares', sharingRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/benefits', benefitsRouter);
 app.use('/api/verification', verificationRouter);

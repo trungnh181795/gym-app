@@ -63,7 +63,7 @@ export default function QRCodeDisplay({
 
     try {
       const endpoint = isAdmin 
-        ? `/api/credentials/${credentialId}/qr-admin`
+        ? `/api/credentials/${credentialId}/qr?admin=true`
         : `/api/credentials/${credentialId}/qr-client`;
       
       // Get token from localStorage
@@ -78,10 +78,15 @@ export default function QRCodeDisplay({
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Backend returns { success: true, data: { token: "...", expiresAt: "...", expiresIn: 60 } }
-        const token = data.data?.token || data.qrData;
-        setQrData(token);
-        if (!isAdmin) {
+        // Backend returns different structures for admin vs client
+        if (isAdmin) {
+          // Admin: { success: true, data: { credentialJson: "...", qrType: "permanent" } }
+          const qrValue = data.data?.credentialJson
+          setQrData(qrValue);
+        } else {
+          // Client: { success: true, data: { token: "...", expiresAt: "...", expiresIn: 60 } }
+          const token = data.data?.token || data.qrData;
+          setQrData(token);
           setTimeLeft(data.data?.expiresIn || 60); // 60 seconds for client QR codes
         }
       } else {

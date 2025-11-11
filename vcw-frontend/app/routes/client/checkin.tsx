@@ -88,9 +88,6 @@ export default function ClientCheckin() {
 
       const imageDataObj = context.getImageData(0, 0, canvas.width, canvas.height);
       
-      console.log('Image dimensions:', canvas.width, 'x', canvas.height);
-      console.log('Attempting to scan QR code...');
-      
       // Try multiple scanning strategies
       let code = null;
       
@@ -101,7 +98,6 @@ export default function ClientCheckin() {
       
       // Strategy 2: Try with inversion
       if (!code) {
-        console.log('Trying with inversion...');
         code = jsQR(imageDataObj.data, imageDataObj.width, imageDataObj.height, {
           inversionAttempts: 'attemptBoth',
         });
@@ -109,7 +105,6 @@ export default function ClientCheckin() {
       
       // Strategy 3: Try with scaling down for large images
       if (!code && (canvas.width > 1000 || canvas.height > 1000)) {
-        console.log('Trying with scaled down image...');
         const scale = Math.min(1000 / canvas.width, 1000 / canvas.height);
         const scaledCanvas = document.createElement('canvas');
         const scaledContext = scaledCanvas.getContext('2d');
@@ -136,11 +131,8 @@ export default function ClientCheckin() {
         return;
       }
 
-      console.log('QR code detected successfully!');
-      
       // The QR code contains a SHORT token (16 chars) that references credentials
       const token = code.data.trim();
-      console.log('Token from QR:', token, 'Length:', token.length);
 
       if (!token) {
         setVerificationResult({

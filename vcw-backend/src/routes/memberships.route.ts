@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { membershipService, MembershipService } from '../services/membership.service';
+import { membershipService } from '../services/membership.service';
 import { tokenService } from '../services/token.service';
 import { ApiResponse, CreateMembershipRequest } from '../types';
 
@@ -21,7 +21,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const result = await membershipService.createMembership(createMembershipRequest);
     
     // Create a SHORT token (16 chars) that references the credentials
-    const credentialToken = tokenService.createCredentialToken(result.credentials);
+    const credentialToken = await tokenService.createCredentialToken(result.credentials);
     
     res.status(201).json({
       success: true,
@@ -36,6 +36,26 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       error: 'Failed to create membership',
+      message: (error as Error).message
+    } as ApiResponse);
+  }
+});
+
+// Get all memberships with full details (for dashboard)
+router.get('/with-details', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const memberships = await membershipService.getAllMembershipsWithBenefits();
+    
+    res.json({
+      success: true,
+      message: 'Memberships with details retrieved successfully',
+      data: memberships
+    } as ApiResponse);
+  } catch (error) {
+    console.error('Get memberships with details error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get memberships with details',
       message: (error as Error).message
     } as ApiResponse);
   }
